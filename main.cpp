@@ -105,7 +105,7 @@ class Mesh {
 public:
     void init();
     void render();
-    static std::shared_ptr<Mesh> genTerrain(const size_t resolution = 64);
+    static std::shared_ptr<Mesh> Mesh::genTerrain(const float resolution, const std::string& filename);
 private:
     std::vector<float> m_vertexPositions;
     std::vector<float> m_vertexNormals;
@@ -188,64 +188,118 @@ void Mesh::render() {
 
 
 
-std::shared_ptr<Mesh> Mesh::genTerrain(const size_t resolution) {
+std::shared_ptr<Mesh> Mesh::genTerrain(const float resolution, const std::string& filename) {
     // init cpu
     std::shared_ptr<Mesh> mesh = std::make_shared<Mesh>();
-    int rayon = 1;
-    
-    mesh->m_vertexPositions = {};
-    for (int i = 0; i < resolution; i++) {
-        for (int j = 0; j < resolution; j++) {
-            mesh->m_vertexPositions.push_back(rayon * sin(PI * i / (resolution-1)) * sin(2 * PI * j / (resolution - 1)));//x
-            mesh->m_vertexPositions.push_back(rayon * cos(PI * i / (resolution - 1)));//y
-            mesh->m_vertexPositions.push_back(rayon * sin(PI * i / (resolution - 1)) * cos(2 * PI * j / (resolution - 1)));//z
-        }
-        
+    int width, height, numComponents;
+    unsigned char* heightMap = stbi_load(
+        filename.c_str(),
+        &width, &height,
+        &numComponents, // 1 for a 8 bit greyscale image, 3 for 24bits RGB image, 4 for 32bits RGBA image
+        0);
+
+    if (heightMap == NULL) {
+        printf("Error in loading the height map image.\n");
+        exit(1);
     }
-    mesh->m_vertexNormals = {};
+
+    size_t img_size = width * height * numComponents;
+    int gray_channels = numComponents == 4 ? 2 : 1;
+    size_t gray_img_size = width * height * gray_channels;
+
+    std::cout << gray_channels;
+    std::cout << gray_img_size;
+
+    unsigned char* gray_img = (unsigned char*)malloc(gray_img_size);
+
+    if (gray_img == NULL) {
+        printf("Unable to allocate memory for the gray image.\n");
+        exit(1);
+    }
+
+    for (unsigned char* p = heightMap, *pg = gray_img; p != heightMap + img_size; p += numComponents, pg += gray_channels) {
+        //To gray 
+        *pg = (uint8_t)(*p * 0.39 + *(p + 1) * 0.50 + *(p + 2) * 0.11);
+
+        if (numComponents == 4) {
+            *(pg + 1) = *(p + 3);
+        }
+    }
+
+    printf("Loaded image with a width of %dpx, a height of %dpx and %d channels\n", width, height, numComponents);
+
+    int ax = -10;
+    int az = 10;
+    int bx = 10;
+    int bz = -10;
+    int hmin = -10;
+    int hmax = 10;
+
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width; j++) {
+
+            mesh->m_vertexPositions.push_back((float)(i / resolution - 1)); //x
+
+            //int src_index = numComponents * j + numComponents * width * i;
+            int src_index = 1 * j + 1 * width * i;
+
+            mesh->m_vertexPositions.push_back((float)(gray_img[src_index] / 255.f)); //y
+            mesh->m_vertexPositions.push_back((float)(j / resolution - 1)); //z
+        }
+    }
+
     //On met les coordonnées des sommets comme vecteurs normaux
     int i = 0;
-    while (i<mesh->m_vertexPositions.size()) {
+    while (i < mesh->m_vertexPositions.size()) {
         mesh->m_vertexNormals.push_back(mesh->m_vertexPositions[i]);
-        mesh->m_vertexNormals.push_back(mesh->m_vertexPositions[i+1]);
-        mesh->m_vertexNormals.push_back(mesh->m_vertexPositions[i+2]);
+        mesh->m_vertexNormals.push_back(mesh->m_vertexPositions[i + 1]);
+        mesh->m_vertexNormals.push_back(mesh->m_vertexPositions[i + 2]);
         i += 3;
     }
 
     //Pour les coordonnées des textures, on avance de 1/resolution pour remplir avec la texture entre 0 et 1
-    mesh->m_vertexTexCoords = {};
-    for (int i=0;i<resolution;i++) {
-        for (int j = 0; j < resolution; j++) {
-            mesh->m_vertexTexCoords.push_back(float(j)/(resolution-1)); //x
-            mesh->m_vertexTexCoords.push_back(float(i)/ (resolution - 1)); //y
+    /*mesh->m_vertexTexCoords = {};
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width; j++) {
+            mesh->m_vertexTexCoords.push_back(float(j) / (width - 1)); //x
+            mesh->m_vertexTexCoords.push_back(float(i) / (height - 1)); //y
         }
-    }
+    }*/
 
-    mesh->m_triangleIndices = { };
+    //mesh->m_triangleIndices = {};
 
-    for (int i = 0; i < resolution*resolution-1-resolution+1; i++) {
-        if (i % resolution == resolution - 1) {
-        }
-        else {
+    for (int i = 0; i < width * height - width; i++) {
+
+        if (i % width != width - 1) {
             mesh->m_triangleIndices.push_back(i);
-            mesh->m_triangleIndices.push_back(i + resolution);
+            mesh->m_triangleIndices.push_back(i + width);
             mesh->m_triangleIndices.push_back(i + 1);
-            
+            mesh->m_triangleIndices.push_back(i + 1);
+            mesh->m_triangleIndices.push_back(i + width);
+            mesh->m_triangleIndices.push_back(i + width + 1);
         }
     }
-    for (int i = resolution; i < resolution * resolution - 1; i++) {
-        if (i % resolution == resolution - 1) {
-         
-            
-        }
-        else {
-            mesh->m_triangleIndices.push_back(i);
-            mesh->m_triangleIndices.push_back(i + 1);
-            mesh->m_triangleIndices.push_back(i - resolution + 1);
-        }
 
-    }
+    /*for (int i = 0; i < height - 1; i++) {
+        for (int j = 0; j < width - 1; j++) {
 
+            int a = 1 * j + 1 * width * i;
+            int b = 1 * j + 1 * width * (i + 1);
+            int c = 1 * (j + 1) + 1 * width * (i + 1);
+            int d = 1 * (j + 1) + 1 * width * i;
+
+            mesh->m_triangleIndices.push_back(a);
+            mesh->m_triangleIndices.push_back(b);
+            mesh->m_triangleIndices.push_back(d);
+            mesh->m_triangleIndices.push_back(b);
+            mesh->m_triangleIndices.push_back(c);
+            mesh->m_triangleIndices.push_back(d);
+        }
+    }*/
+
+    std::cout << mesh->m_vertexPositions.size() << " " << mesh->m_triangleIndices.size();
+
+    stbi_image_free(heightMap);
     return mesh;
 }
 
@@ -412,8 +466,8 @@ void initOpenGL() {
     std::exit(EXIT_FAILURE);
   }
 
-  glCullFace(GL_BACK); // Specifies the faces to cull (here the ones pointing away from the camera)
-  glEnable(GL_CULL_FACE); // Enables face culling (based on the orientation defined by the CW/CCW enumeration).
+  //glCullFace(GL_BACK); // Specifies the faces to cull (here the ones pointing away from the camera)
+  //glEnable(GL_CULL_FACE); // Enables face culling (based on the orientation defined by the CW/CCW enumeration).
   glDepthFunc(GL_LESS);   // Specify the depth test for the z-buffer
   glEnable(GL_DEPTH_TEST);      // Enable the z-buffer test in the rasterization
   glClearColor(0.7f, 0.7f, 0.7f, 1.0f); // specify the background color, used any time the framebuffer is cleared
@@ -461,7 +515,7 @@ void initCamera() {
 void init() {
   initGLFW();
   initOpenGL();
-  mesh = Mesh::genTerrain(); //cpu
+  mesh = Mesh::genTerrain(32, "../data/heightmap2.jpg"); //cpu
   initGPUprogram();
   //g_sunID = loadTextureFromFileToGPU("../../../media/sun.jpg");
   mesh->init(); //gpu
