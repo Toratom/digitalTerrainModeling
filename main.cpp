@@ -105,8 +105,16 @@ class Mesh {
 public:
     void init();
     void render();
-    static std::shared_ptr<Mesh> Mesh::genTerrain(const float resolution, const std::string& filename);
+    static std::shared_ptr<Mesh> Mesh::genTerrain(const std::string& filename);
+    float getH(unsigned int i, unsigned int j);
+    float getIDerivate(unsigned int i, unsigned int j); //Dervive par rapport à i c'est à dire quand passe de ligne i à ligne i + 1 (Z)
+    float getJDerivate(unsigned int i, unsigned int j); //Derive par rapport à j (X)
+    glm::vec2 getGradient(unsigned int i, unsigned int j);
 private:
+    unsigned int m_gridWidth = 0; //Nb de colonnes de la grille de discretisation (image)
+    unsigned int m_gridHeight = 0; //Nb de lignes de la grille de discretisation (image)
+    float m_cellWidth = 0;
+    float m_cellHeight = 0;
     std::vector<float> m_vertexPositions;
     std::vector<float> m_vertexNormals;
     std::vector<float> m_vertexColors;
@@ -188,7 +196,7 @@ void Mesh::render() {
 
 
 
-std::shared_ptr<Mesh> Mesh::genTerrain(const float resolution, const std::string& filename) {
+std::shared_ptr<Mesh> Mesh::genTerrain(const std::string& filename) {
     // init cpu
     std::shared_ptr<Mesh> mesh = std::make_shared<Mesh>();
     int width, height, numComponents;
@@ -202,6 +210,10 @@ std::shared_ptr<Mesh> Mesh::genTerrain(const float resolution, const std::string
         printf("Error in loading the height map image.\n");
         exit(1);
     }
+
+    //Met a jour la taille de la grille
+    mesh->m_gridWidth = width;
+    mesh->m_gridHeight = height;
 
     size_t img_size = width * height * numComponents;
     int gray_channels = numComponents == 4 ? 2 : 1;
@@ -225,36 +237,43 @@ std::shared_ptr<Mesh> Mesh::genTerrain(const float resolution, const std::string
 
     printf("Loaded image with a width of %dpx, a height of %dpx and %d channels\n", width, height, numComponents);
 
-    glm::vec4 corners = glm::vec4(1.f, -0.5f, 0, 0);
+    glm::vec4 corners = glm::vec4(-5.f, -5.f, 5.f, 5.f);
     glm::vec2 h = glm::vec2(0.f, 1.f);
 
-    float ax = corners.x;
+    float ax = corners.x; //a coin en haut gauche
     float az = corners.y;
-    float bx = corners.z;
+    float bx = corners.z; //b coin en bas droite
     float bz = corners.w;
     float hmin = h.x;
     float hmax = h.y;
 
+    mesh->m_cellWidth =  abs(bx - ax) / (width - 1.f);
+    mesh->m_cellHeight = abs(bz - az) / (height - 1.f);
+
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < width; j++) {
 
-            mesh->m_vertexPositions.push_back((ax + (bx - ax) * i / resolution)); //x
+            mesh->m_vertexPositions.push_back(ax + (bx - ax) * j / (width - 1)); //x
 
-            //int src_index = numComponents * j + numComponents * width * i;
-            int src_index = 1 * j + 1 * width * i;
+            //int src_index = numComponents * j + numComponents * width< * i;
+            int src_index = j + width * i; //Image déroulée ligne par ligne
 
             mesh->m_vertexPositions.push_back((gray_img[src_index] / 255.f * (hmax - hmin) + hmin)); //y
-            mesh->m_vertexPositions.push_back((az + (bz - az) * j / resolution)); //z
+            mesh->m_vertexPositions.push_back(az + (bz - az) * i / (height - 1)); //z
         }
     }
 
-    //On met les coordonnées des sommets comme vecteurs normaux
-    int i = 0;
-    while (i < mesh->m_vertexPositions.size()) {
-        mesh->m_vertexNormals.push_back(mesh->m_vertexPositions[i]);
-        mesh->m_vertexNormals.push_back(mesh->m_vertexPositions[i + 1]);
-        mesh->m_vertexNormals.push_back(mesh->m_vertexPositions[i + 2]);
-        i += 3;
+    //On calcule les vecteurs normaux, en utilisant le gradient de la fonction d'élévation
+    glm::vec2 grad(0.f, 0.f);
+    glm::vec3 normal(0.f, 0.f, 0.f);
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width; j++) {
+            grad = mesh->getGradient(i, j);
+            normal = glm::normalize(glm::vec3(-grad.y, 1, -grad.x)); //On fait attention bien mettre dans bon ordre i.e. derive par rapport à x, correspond à derive par rapport à j...
+            mesh->m_vertexNormals.push_back(normal.x);
+            mesh->m_vertexNormals.push_back(normal.y);
+            mesh->m_vertexNormals.push_back(normal.z);
+        }
     }
 
     //Pour les coordonnées des textures, on avance de 1/resolution pour remplir avec la texture entre 0 et 1
@@ -277,23 +296,6 @@ std::shared_ptr<Mesh> Mesh::genTerrain(const float resolution, const std::string
             mesh->m_triangleIndices.push_back(i + width + 1);
         }
     }
-    
-    //for (int i = 0; i < height - 1; i++) {
-    //    for (int j = 0; j < width - 1; j++) {
-
-    //        int a = 1 * j + 1 * width * i;
-    //        int b = 1 * j + 1 * width * (i + 1);
-    //        int c = 1 * (j + 1) + 1 * width * (i + 1);
-    //        int d = 1 * (j + 1) + 1 * width * i;
-
-    //        mesh->m_triangleIndices.push_back(a);
-    //        mesh->m_triangleIndices.push_back(b);
-    //        mesh->m_triangleIndices.push_back(c);
-    //        mesh->m_triangleIndices.push_back(c);
-    //        mesh->m_triangleIndices.push_back(d);
-    //        mesh->m_triangleIndices.push_back(a);
-    //    }
-    //}
 
     std::cout << mesh->m_vertexPositions.size() << " " << mesh->m_triangleIndices.size();
     free(gray_img);
@@ -301,6 +303,38 @@ std::shared_ptr<Mesh> Mesh::genTerrain(const float resolution, const std::string
     return mesh;
 }
 
+float Mesh::getH(unsigned int i, unsigned int j) {
+    unsigned int yIndex = 3 * (i * m_gridWidth + j) + 1;
+    return m_vertexPositions[yIndex];
+}
+
+float Mesh::getIDerivate(unsigned int i, unsigned int j) {
+    //On fait attention au bord
+    if (i == 0) {
+        return (getH(i + 1, j) - getH(i, j)) / m_cellHeight;
+    }
+    if (i == m_gridHeight - 1) {
+        return (getH(i, j) - getH(i - 1, j)) / m_cellHeight;
+    }
+    
+    return (getH(i + 1, j) - getH(i - 1, j)) / (2.f * m_cellHeight);
+}
+
+float Mesh::getJDerivate(unsigned int i, unsigned int j) {
+    //On fait attention au bord
+    if (j == 0) {
+        return (getH(i, j + 1) - getH(i, j)) / m_cellWidth;
+    }
+    if (j == m_gridWidth - 1) {
+        return (getH(i, j) - getH(i, j - 1)) / m_cellWidth;
+    }
+
+    return (getH(i, j + 1) - getH(i, j - 1)) / (2.f * m_cellWidth);
+}
+
+glm::vec2 Mesh::getGradient(unsigned int i, unsigned int j) {
+    return glm::vec2(getIDerivate(i, j), getJDerivate(i, j));
+}
 
 
 GLuint loadTextureFromFileToGPU(const std::string &filename) {
@@ -463,9 +497,9 @@ void initOpenGL() {
     glfwTerminate();
     std::exit(EXIT_FAILURE);
   }
-
-  //glCullFace(GL_BACK); // Specifies the faces to cull (here the ones pointing away from the camera)
-  //glEnable(GL_CULL_FACE); // Enables face culling (based on the orientation defined by the CW/CCW enumeration).
+  
+  glCullFace(GL_BACK); // specifies the faces to cull (here the ones pointing away from the camera)
+  glEnable(GL_CULL_FACE); // enables face culling (based on the orientation defined by the cw/ccw enumeration).
   glDepthFunc(GL_LESS);   // Specify the depth test for the z-buffer
   glEnable(GL_DEPTH_TEST);      // Enable the z-buffer test in the rasterization
   glClearColor(0.7f, 0.7f, 0.7f, 1.0f); // specify the background color, used any time the framebuffer is cleared
@@ -507,13 +541,13 @@ void initCamera() {
 
   g_camera.setPosition(glm::vec3(0.0, 0.0, 10.0));
   g_camera.setNear(0.1);
-  g_camera.setFar(10.0);
+  g_camera.setFar(20.0);
 }
 
 void init() {
   initGLFW();
   initOpenGL();
-  mesh = Mesh::genTerrain(32, "../data/heightmap2.jpg"); //cpu
+  mesh = Mesh::genTerrain("../data/heightmap4.jpg"); //cpu
   initGPUprogram();
   //g_sunID = loadTextureFromFileToGPU("../../../media/sun.jpg");
   mesh->init(); //gpu

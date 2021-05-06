@@ -43,4 +43,6 @@ void main() {
 
 	color = vec4(texColor*(diffuse+ambient+specular),1.0);// build an RGBA from an RGB*/
 	color = vec4(normalize(fNormal),1.0);
+
+	//color = vec4(normalize(fNormal).x, 0.f, normalize(fNormal).z, 1.0);
 }
