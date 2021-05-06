@@ -207,10 +207,7 @@ std::shared_ptr<Mesh> Mesh::genTerrain(const float resolution, const std::string
     int gray_channels = numComponents == 4 ? 2 : 1;
     size_t gray_img_size = width * height * gray_channels;
 
-    std::cout << gray_channels;
-    std::cout << gray_img_size;
-
-    unsigned char* gray_img = (unsigned char*)malloc(gray_img_size);
+    unsigned char* gray_img = (unsigned char*) malloc(gray_img_size);
 
     if (gray_img == NULL) {
         printf("Unable to allocate memory for the gray image.\n");
@@ -228,23 +225,26 @@ std::shared_ptr<Mesh> Mesh::genTerrain(const float resolution, const std::string
 
     printf("Loaded image with a width of %dpx, a height of %dpx and %d channels\n", width, height, numComponents);
 
-    int ax = -10;
-    int az = 10;
-    int bx = 10;
-    int bz = -10;
-    int hmin = -10;
-    int hmax = 10;
+    glm::vec4 corners = glm::vec4(1.f, -0.5f, 0, 0);
+    glm::vec2 h = glm::vec2(0.f, 1.f);
+
+    float ax = corners.x;
+    float az = corners.y;
+    float bx = corners.z;
+    float bz = corners.w;
+    float hmin = h.x;
+    float hmax = h.y;
 
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < width; j++) {
 
-            mesh->m_vertexPositions.push_back((float)(i / resolution - 1)); //x
+            mesh->m_vertexPositions.push_back((ax + (bx - ax) * i / resolution)); //x
 
             //int src_index = numComponents * j + numComponents * width * i;
             int src_index = 1 * j + 1 * width * i;
 
-            mesh->m_vertexPositions.push_back((float)(gray_img[src_index] / 255.f)); //y
-            mesh->m_vertexPositions.push_back((float)(j / resolution - 1)); //z
+            mesh->m_vertexPositions.push_back((gray_img[src_index] / 255.f * (hmax - hmin) + hmin)); //y
+            mesh->m_vertexPositions.push_back((az + (bz - az) * j / resolution)); //z
         }
     }
 
@@ -265,8 +265,6 @@ std::shared_ptr<Mesh> Mesh::genTerrain(const float resolution, const std::string
             mesh->m_vertexTexCoords.push_back(float(i) / (height - 1)); //y
         }
     }*/
-
-    //mesh->m_triangleIndices = {};
 
     for (int i = 0; i < width * height - width; i++) {
 
@@ -298,7 +296,7 @@ std::shared_ptr<Mesh> Mesh::genTerrain(const float resolution, const std::string
     //}
 
     std::cout << mesh->m_vertexPositions.size() << " " << mesh->m_triangleIndices.size();
-
+    free(gray_img);
     stbi_image_free(heightMap);
     return mesh;
 }
