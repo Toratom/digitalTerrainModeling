@@ -279,23 +279,23 @@ std::shared_ptr<Mesh> Mesh::genTerrain(const float resolution, const std::string
             mesh->m_triangleIndices.push_back(i + width + 1);
         }
     }
+    
+    //for (int i = 0; i < height - 1; i++) {
+    //    for (int j = 0; j < width - 1; j++) {
 
-    /*for (int i = 0; i < height - 1; i++) {
-        for (int j = 0; j < width - 1; j++) {
+    //        int a = 1 * j + 1 * width * i;
+    //        int b = 1 * j + 1 * width * (i + 1);
+    //        int c = 1 * (j + 1) + 1 * width * (i + 1);
+    //        int d = 1 * (j + 1) + 1 * width * i;
 
-            int a = 1 * j + 1 * width * i;
-            int b = 1 * j + 1 * width * (i + 1);
-            int c = 1 * (j + 1) + 1 * width * (i + 1);
-            int d = 1 * (j + 1) + 1 * width * i;
-
-            mesh->m_triangleIndices.push_back(a);
-            mesh->m_triangleIndices.push_back(b);
-            mesh->m_triangleIndices.push_back(d);
-            mesh->m_triangleIndices.push_back(b);
-            mesh->m_triangleIndices.push_back(c);
-            mesh->m_triangleIndices.push_back(d);
-        }
-    }*/
+    //        mesh->m_triangleIndices.push_back(a);
+    //        mesh->m_triangleIndices.push_back(b);
+    //        mesh->m_triangleIndices.push_back(c);
+    //        mesh->m_triangleIndices.push_back(c);
+    //        mesh->m_triangleIndices.push_back(d);
+    //        mesh->m_triangleIndices.push_back(a);
+    //    }
+    //}
 
     std::cout << mesh->m_vertexPositions.size() << " " << mesh->m_triangleIndices.size();
 
