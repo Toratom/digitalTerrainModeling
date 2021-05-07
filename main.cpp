@@ -101,12 +101,20 @@ glm::vec3 g_baseRot(0.0);
 
 //Mesh
 class Mesh {
-
 public:
+    Mesh(const std::string& filename, const glm::vec4& corners, const glm::vec2& h);
+
     void init();
     void render();
-    static std::shared_ptr<Mesh> Mesh::genTerrain(const float resolution, const std::string& filename);
+    float getH(unsigned int i, unsigned int j);
+    float getIDerivate(unsigned int i, unsigned int j); //Dervive par rapport à i c'est à dire quand passe de ligne i à ligne i + 1 (Z)
+    float getJDerivate(unsigned int i, unsigned int j); //Derive par rapport à j (X)
+    glm::vec2 getGradient(unsigned int i, unsigned int j);
 private:
+    unsigned int m_gridWidth = 0; //Nb de colonnes de la grille de discretisation (image)
+    unsigned int m_gridHeight = 0; //Nb de lignes de la grille de discretisation (image)
+    float m_cellWidth = 0;
+    float m_cellHeight = 0;
     std::vector<float> m_vertexPositions;
     std::vector<float> m_vertexNormals;
     std::vector<float> m_vertexColors;
@@ -118,8 +126,12 @@ private:
     GLuint m_normalVbo = 0;
     GLuint m_ibo = 0;
     GLuint m_colVbo = 0;
+
+    unsigned char* loadHeightMapFromFile(const std::string& filename, int& width, int& height, int& channels);
 };
-std::shared_ptr<Mesh> mesh;
+
+//Mesh CPU
+Mesh* mesh;
 
 void Mesh::init() {
     //Init gpu
@@ -187,122 +199,147 @@ void Mesh::render() {
 }
 
 
-
-std::shared_ptr<Mesh> Mesh::genTerrain(const float resolution, const std::string& filename) {
-    // init cpu
-    std::shared_ptr<Mesh> mesh = std::make_shared<Mesh>();
-    int width, height, numComponents;
+unsigned char* Mesh::loadHeightMapFromFile(const std::string& filename, int& width, int& height, int& channels) {
+    
     unsigned char* heightMap = stbi_load(
         filename.c_str(),
         &width, &height,
-        &numComponents, // 1 for a 8 bit greyscale image, 3 for 24bits RGB image, 4 for 32bits RGBA image
+        &channels, // 1 for a 8 bit greyscale image, 3 for 24bits RGB image, 4 for 32bits RGBA image
         0);
 
     if (heightMap == NULL) {
         printf("Error in loading the height map image.\n");
         exit(1);
     }
+    else {
+        printf("Loaded image with a width of %dpx, a height of %dpx and %d channels\n", width, height, channels);
+    }
 
-    size_t img_size = width * height * numComponents;
-    int gray_channels = numComponents == 4 ? 2 : 1;
+    size_t img_size = width * height * channels;
+    int gray_channels = channels == 4 ? 2 : 1;
     size_t gray_img_size = width * height * gray_channels;
 
-    std::cout << gray_channels;
-    std::cout << gray_img_size;
-
-    unsigned char* gray_img = (unsigned char*)malloc(gray_img_size);
+    unsigned char * gray_img = (unsigned char * ) malloc(gray_img_size);
 
     if (gray_img == NULL) {
         printf("Unable to allocate memory for the gray image.\n");
         exit(1);
     }
 
-    for (unsigned char* p = heightMap, *pg = gray_img; p != heightMap + img_size; p += numComponents, pg += gray_channels) {
+    for (unsigned char* p = heightMap, *pg = gray_img; p != heightMap + img_size; p += channels, pg += gray_channels) {
         //To gray 
         *pg = (uint8_t)(*p * 0.39 + *(p + 1) * 0.50 + *(p + 2) * 0.11);
 
-        if (numComponents == 4) {
+        if (channels == 4) {
             *(pg + 1) = *(p + 3);
         }
     }
 
-    printf("Loaded image with a width of %dpx, a height of %dpx and %d channels\n", width, height, numComponents);
+    stbi_image_free(heightMap);
 
-    int ax = -10;
-    int az = 10;
-    int bx = 10;
-    int bz = -10;
-    int hmin = -10;
-    int hmax = 10;
+    return gray_img;
+}
+
+Mesh::Mesh(const std::string& filename, const glm::vec4& corners, const glm::vec2& h) {
+    int width = 0, height = 0, channels = 0;
+    unsigned char * gray_img = loadHeightMapFromFile(filename, width, height, channels);
+
+    //Met a jour la taille de la grille
+    m_gridWidth = width;
+    m_gridHeight = height;
+
+    float ax = corners.x; //a coin en haut gauche
+    float az = corners.y; 
+    float bx = corners.z; //b coin en bas droite
+    float bz = corners.w;
+    float hmin = h.x;
+    float hmax = h.y;
+
+    m_cellWidth =  abs(bx - ax) / (width - 1.f);
+    m_cellHeight = abs(bz - az) / (height - 1.f);
 
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < width; j++) {
 
-            mesh->m_vertexPositions.push_back((float)(i / resolution - 1)); //x
+            m_vertexPositions.push_back(ax + (bx - ax) * j / (width - 1)); //x
 
-            //int src_index = numComponents * j + numComponents * width * i;
-            int src_index = 1 * j + 1 * width * i;
+            //int src_index = numComponents * j + numComponents * width< * i;
+            int src_index = j + width * i; //Image déroulée ligne par ligne
 
-            mesh->m_vertexPositions.push_back((float)(gray_img[src_index] / 255.f)); //y
-            mesh->m_vertexPositions.push_back((float)(j / resolution - 1)); //z
+            m_vertexPositions.push_back((gray_img[src_index] / 255.f * (hmax - hmin) + hmin)); //y
+            m_vertexPositions.push_back(az + (bz - az) * i / (height - 1)); //z
         }
     }
 
-    //On met les coordonnées des sommets comme vecteurs normaux
-    int i = 0;
-    while (i < mesh->m_vertexPositions.size()) {
-        mesh->m_vertexNormals.push_back(mesh->m_vertexPositions[i]);
-        mesh->m_vertexNormals.push_back(mesh->m_vertexPositions[i + 1]);
-        mesh->m_vertexNormals.push_back(mesh->m_vertexPositions[i + 2]);
-        i += 3;
+    //On calcule les vecteurs normaux, en utilisant le gradient de la fonction d'élévation
+    glm::vec2 grad(0.f, 0.f);
+    glm::vec3 normal(0.f, 0.f, 0.f);
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width; j++) {
+            grad = getGradient(i, j);
+            normal = glm::normalize(glm::vec3(-grad.y, 1, -grad.x)); //On fait attention bien mettre dans bon ordre i.e. derive par rapport à x, correspond à derive par rapport à j...
+            m_vertexNormals.push_back(normal.x);
+            m_vertexNormals.push_back(normal.y);
+            m_vertexNormals.push_back(normal.z);
+        }
     }
 
     //Pour les coordonnées des textures, on avance de 1/resolution pour remplir avec la texture entre 0 et 1
-    /*mesh->m_vertexTexCoords = {};
+    /*m_vertexTexCoords = {};
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < width; j++) {
-            mesh->m_vertexTexCoords.push_back(float(j) / (width - 1)); //x
-            mesh->m_vertexTexCoords.push_back(float(i) / (height - 1)); //y
+            m_vertexTexCoords.push_back(float(j) / (width - 1)); //x
+            m_vertexTexCoords.push_back(float(i) / (height - 1)); //y
         }
     }*/
-
-    //mesh->m_triangleIndices = {};
 
     for (int i = 0; i < width * height - width; i++) {
 
         if (i % width != width - 1) {
-            mesh->m_triangleIndices.push_back(i);
-            mesh->m_triangleIndices.push_back(i + width);
-            mesh->m_triangleIndices.push_back(i + 1);
-            mesh->m_triangleIndices.push_back(i + 1);
-            mesh->m_triangleIndices.push_back(i + width);
-            mesh->m_triangleIndices.push_back(i + width + 1);
+            m_triangleIndices.push_back(i);
+            m_triangleIndices.push_back(i + width);
+            m_triangleIndices.push_back(i + 1);
+            m_triangleIndices.push_back(i + 1);
+            m_triangleIndices.push_back(i + width);
+            m_triangleIndices.push_back(i + width + 1);
         }
     }
 
-    /*for (int i = 0; i < height - 1; i++) {
-        for (int j = 0; j < width - 1; j++) {
-
-            int a = 1 * j + 1 * width * i;
-            int b = 1 * j + 1 * width * (i + 1);
-            int c = 1 * (j + 1) + 1 * width * (i + 1);
-            int d = 1 * (j + 1) + 1 * width * i;
-
-            mesh->m_triangleIndices.push_back(a);
-            mesh->m_triangleIndices.push_back(b);
-            mesh->m_triangleIndices.push_back(d);
-            mesh->m_triangleIndices.push_back(b);
-            mesh->m_triangleIndices.push_back(c);
-            mesh->m_triangleIndices.push_back(d);
-        }
-    }*/
-
-    std::cout << mesh->m_vertexPositions.size() << " " << mesh->m_triangleIndices.size();
-
-    stbi_image_free(heightMap);
-    return mesh;
+    free(gray_img);
 }
 
+float Mesh::getH(unsigned int i, unsigned int j) {
+    unsigned int yIndex = 3 * (i * m_gridWidth + j) + 1;
+    return m_vertexPositions[yIndex];
+}
+
+float Mesh::getIDerivate(unsigned int i, unsigned int j) {
+    //On fait attention au bord
+    if (i == 0) {
+        return (getH(i + 1, j) - getH(i, j)) / m_cellHeight;
+    }
+    if (i == m_gridHeight - 1) {
+        return (getH(i, j) - getH(i - 1, j)) / m_cellHeight;
+    }
+    
+    return (getH(i + 1, j) - getH(i - 1, j)) / (2.f * m_cellHeight);
+}
+
+float Mesh::getJDerivate(unsigned int i, unsigned int j) {
+    //On fait attention au bord
+    if (j == 0) {
+        return (getH(i, j + 1) - getH(i, j)) / m_cellWidth;
+    }
+    if (j == m_gridWidth - 1) {
+        return (getH(i, j) - getH(i, j - 1)) / m_cellWidth;
+    }
+
+    return (getH(i, j + 1) - getH(i, j - 1)) / (2.f * m_cellWidth);
+}
+
+glm::vec2 Mesh::getGradient(unsigned int i, unsigned int j) {
+    return glm::vec2(getIDerivate(i, j), getJDerivate(i, j));
+}
 
 
 GLuint loadTextureFromFileToGPU(const std::string &filename) {
@@ -465,9 +502,9 @@ void initOpenGL() {
     glfwTerminate();
     std::exit(EXIT_FAILURE);
   }
-
-  //glCullFace(GL_BACK); // Specifies the faces to cull (here the ones pointing away from the camera)
-  //glEnable(GL_CULL_FACE); // Enables face culling (based on the orientation defined by the CW/CCW enumeration).
+  
+  glCullFace(GL_BACK); // specifies the faces to cull (here the ones pointing away from the camera)
+  glEnable(GL_CULL_FACE); // enables face culling (based on the orientation defined by the cw/ccw enumeration).
   glDepthFunc(GL_LESS);   // Specify the depth test for the z-buffer
   glEnable(GL_DEPTH_TEST);      // Enable the z-buffer test in the rasterization
   glClearColor(0.7f, 0.7f, 0.7f, 1.0f); // specify the background color, used any time the framebuffer is cleared
@@ -509,13 +546,13 @@ void initCamera() {
 
   g_camera.setPosition(glm::vec3(0.0, 0.0, 10.0));
   g_camera.setNear(0.1);
-  g_camera.setFar(10.0);
+  g_camera.setFar(20.0);
 }
 
 void init() {
   initGLFW();
   initOpenGL();
-  mesh = Mesh::genTerrain(32, "../data/heightmap4.jpg"); //cpu
+  mesh = new Mesh("../data/heightmap3.jpg", glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 1.f)); //cpu
   initGPUprogram();
   //g_sunID = loadTextureFromFileToGPU("../../../media/sun.jpg");
   mesh->init(); //gpu
