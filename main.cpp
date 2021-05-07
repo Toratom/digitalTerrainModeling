@@ -515,7 +515,7 @@ void initCamera() {
 void init() {
   initGLFW();
   initOpenGL();
-  mesh = Mesh::genTerrain(32, "../data/heightmap2.jpg"); //cpu
+  mesh = Mesh::genTerrain(32, "../data/heightmap4.jpg"); //cpu
   initGPUprogram();
   //g_sunID = loadTextureFromFileToGPU("../../../media/sun.jpg");
   mesh->init(); //gpu
