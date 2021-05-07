@@ -101,11 +101,11 @@ glm::vec3 g_baseRot(0.0);
 
 //Mesh
 class Mesh {
-
 public:
+    Mesh(const std::string& filename, const glm::vec4& corners, const glm::vec2& h);
+
     void init();
     void render();
-    static std::shared_ptr<Mesh> Mesh::genTerrain(const std::string& filename, const glm::vec4 corners, const glm::vec2 h);
     float getH(unsigned int i, unsigned int j);
     float getIDerivate(unsigned int i, unsigned int j); //Dervive par rapport à i c'est à dire quand passe de ligne i à ligne i + 1 (Z)
     float getJDerivate(unsigned int i, unsigned int j); //Derive par rapport à j (X)
@@ -126,9 +126,12 @@ private:
     GLuint m_normalVbo = 0;
     GLuint m_ibo = 0;
     GLuint m_colVbo = 0;
+
     unsigned char* loadHeightMapFromFile(const std::string& filename, int& width, int& height, int& channels);
 };
-std::shared_ptr<Mesh> mesh;
+
+//Mesh CPU
+Mesh* mesh;
 
 void Mesh::init() {
     //Init gpu
@@ -237,15 +240,13 @@ unsigned char* Mesh::loadHeightMapFromFile(const std::string& filename, int& wid
     return gray_img;
 }
 
-std::shared_ptr<Mesh> Mesh::genTerrain(const std::string& filename, const glm::vec4 corners, const glm::vec2 h) {
-    // init cpu
-    std::shared_ptr<Mesh> mesh = std::make_shared<Mesh>();
+Mesh::Mesh(const std::string& filename, const glm::vec4& corners, const glm::vec2& h) {
     int width = 0, height = 0, channels = 0;
-    unsigned char * gray_img = mesh->loadHeightMapFromFile(filename, width, height, channels);
+    unsigned char * gray_img = loadHeightMapFromFile(filename, width, height, channels);
 
     //Met a jour la taille de la grille
-    mesh->m_gridWidth = width;
-    mesh->m_gridHeight = height;
+    m_gridWidth = width;
+    m_gridHeight = height;
 
     float ax = corners.x; //a coin en haut gauche
     float az = corners.y; 
@@ -254,19 +255,19 @@ std::shared_ptr<Mesh> Mesh::genTerrain(const std::string& filename, const glm::v
     float hmin = h.x;
     float hmax = h.y;
 
-    mesh->m_cellWidth =  abs(bx - ax) / (width - 1.f);
-    mesh->m_cellHeight = abs(bz - az) / (height - 1.f);
+    m_cellWidth =  abs(bx - ax) / (width - 1.f);
+    m_cellHeight = abs(bz - az) / (height - 1.f);
 
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < width; j++) {
 
-            mesh->m_vertexPositions.push_back(ax + (bx - ax) * j / (width - 1)); //x
+            m_vertexPositions.push_back(ax + (bx - ax) * j / (width - 1)); //x
 
             //int src_index = numComponents * j + numComponents * width< * i;
             int src_index = j + width * i; //Image déroulée ligne par ligne
 
-            mesh->m_vertexPositions.push_back((gray_img[src_index] / 255.f * (hmax - hmin) + hmin)); //y
-            mesh->m_vertexPositions.push_back(az + (bz - az) * i / (height - 1)); //z
+            m_vertexPositions.push_back((gray_img[src_index] / 255.f * (hmax - hmin) + hmin)); //y
+            m_vertexPositions.push_back(az + (bz - az) * i / (height - 1)); //z
         }
     }
 
@@ -275,37 +276,36 @@ std::shared_ptr<Mesh> Mesh::genTerrain(const std::string& filename, const glm::v
     glm::vec3 normal(0.f, 0.f, 0.f);
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < width; j++) {
-            grad = mesh->getGradient(i, j);
+            grad = getGradient(i, j);
             normal = glm::normalize(glm::vec3(-grad.y, 1, -grad.x)); //On fait attention bien mettre dans bon ordre i.e. derive par rapport à x, correspond à derive par rapport à j...
-            mesh->m_vertexNormals.push_back(normal.x);
-            mesh->m_vertexNormals.push_back(normal.y);
-            mesh->m_vertexNormals.push_back(normal.z);
+            m_vertexNormals.push_back(normal.x);
+            m_vertexNormals.push_back(normal.y);
+            m_vertexNormals.push_back(normal.z);
         }
     }
 
     //Pour les coordonnées des textures, on avance de 1/resolution pour remplir avec la texture entre 0 et 1
-    /*mesh->m_vertexTexCoords = {};
+    /*m_vertexTexCoords = {};
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < width; j++) {
-            mesh->m_vertexTexCoords.push_back(float(j) / (width - 1)); //x
-            mesh->m_vertexTexCoords.push_back(float(i) / (height - 1)); //y
+            m_vertexTexCoords.push_back(float(j) / (width - 1)); //x
+            m_vertexTexCoords.push_back(float(i) / (height - 1)); //y
         }
     }*/
 
     for (int i = 0; i < width * height - width; i++) {
 
         if (i % width != width - 1) {
-            mesh->m_triangleIndices.push_back(i);
-            mesh->m_triangleIndices.push_back(i + width);
-            mesh->m_triangleIndices.push_back(i + 1);
-            mesh->m_triangleIndices.push_back(i + 1);
-            mesh->m_triangleIndices.push_back(i + width);
-            mesh->m_triangleIndices.push_back(i + width + 1);
+            m_triangleIndices.push_back(i);
+            m_triangleIndices.push_back(i + width);
+            m_triangleIndices.push_back(i + 1);
+            m_triangleIndices.push_back(i + 1);
+            m_triangleIndices.push_back(i + width);
+            m_triangleIndices.push_back(i + width + 1);
         }
     }
 
     free(gray_img);
-    return mesh;
 }
 
 float Mesh::getH(unsigned int i, unsigned int j) {
@@ -552,7 +552,7 @@ void initCamera() {
 void init() {
   initGLFW();
   initOpenGL();
-  mesh = Mesh::genTerrain("../data/heightmap4.jpg", glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 1.f)); //cpu
+  mesh = new Mesh("../data/heightmap3.jpg", glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 1.f)); //cpu
   initGPUprogram();
   //g_sunID = loadTextureFromFileToGPU("../../../media/sun.jpg");
   mesh->init(); //gpu
