@@ -105,6 +105,7 @@ class Mesh {
 public:
     void init();
     void render();
+    unsigned char* loadHeightMapFromFileToMesh(const std::string& filename, int& width, int& height, int& channels);
     static std::shared_ptr<Mesh> Mesh::genTerrain(const std::string& filename, const glm::vec4 corners, const glm::vec2 h);
     float getH(unsigned int i, unsigned int j);
     float getIDerivate(unsigned int i, unsigned int j); //Dervive par rapport à i c'est à dire quand passe de ligne i à ligne i + 1 (Z)
@@ -195,50 +196,56 @@ void Mesh::render() {
 }
 
 
-
-std::shared_ptr<Mesh> Mesh::genTerrain(const std::string& filename, const glm::vec4 corners, const glm::vec2 h) {
-    // init cpu
-    std::shared_ptr<Mesh> mesh = std::make_shared<Mesh>();
-    int width, height, numComponents;
+unsigned char* Mesh::loadHeightMapFromFileToMesh(const std::string& filename, int& width, int& height, int& channels) {
+    
     unsigned char* heightMap = stbi_load(
         filename.c_str(),
         &width, &height,
-        &numComponents, // 1 for a 8 bit greyscale image, 3 for 24bits RGB image, 4 for 32bits RGBA image
+        &channels, // 1 for a 8 bit greyscale image, 3 for 24bits RGB image, 4 for 32bits RGBA image
         0);
 
     if (heightMap == NULL) {
         printf("Error in loading the height map image.\n");
         exit(1);
     }
+    else {
+        printf("Loaded image with a width of %dpx, a height of %dpx and %d channels\n", width, height, channels);
+    }
 
-    //Met a jour la taille de la grille
-    mesh->m_gridWidth = width;
-    mesh->m_gridHeight = height;
-
-    size_t img_size = width * height * numComponents;
-    int gray_channels = numComponents == 4 ? 2 : 1;
+    size_t img_size = width * height * channels;
+    int gray_channels = channels == 4 ? 2 : 1;
     size_t gray_img_size = width * height * gray_channels;
 
-    unsigned char* gray_img = (unsigned char*) malloc(gray_img_size);
+    unsigned char * gray_img = (unsigned char * ) malloc(gray_img_size);
 
     if (gray_img == NULL) {
         printf("Unable to allocate memory for the gray image.\n");
         exit(1);
     }
 
-    for (unsigned char* p = heightMap, *pg = gray_img; p != heightMap + img_size; p += numComponents, pg += gray_channels) {
+    for (unsigned char* p = heightMap, *pg = gray_img; p != heightMap + img_size; p += channels, pg += gray_channels) {
         //To gray 
         *pg = (uint8_t)(*p * 0.39 + *(p + 1) * 0.50 + *(p + 2) * 0.11);
 
-        if (numComponents == 4) {
+        if (channels == 4) {
             *(pg + 1) = *(p + 3);
         }
     }
 
-    printf("Loaded image with a width of %dpx, a height of %dpx and %d channels\n", width, height, numComponents);
+    stbi_image_free(heightMap);
 
-    //glm::vec4 corners = glm::vec4(-5.f, -5.f, 5.f, 5.f);
-    //glm::vec2 h = glm::vec2(0.f, 1.f);
+    return gray_img;
+}
+
+std::shared_ptr<Mesh> Mesh::genTerrain(const std::string& filename, const glm::vec4 corners, const glm::vec2 h) {
+    // init cpu
+    std::shared_ptr<Mesh> mesh = std::make_shared<Mesh>();
+    int width = 0, height = 0, channels = 0;
+    unsigned char * gray_img = mesh->loadHeightMapFromFileToMesh(filename, width, height, channels);
+
+    //Met a jour la taille de la grille
+    mesh->m_gridWidth = width;
+    mesh->m_gridHeight = height;
 
     float ax = corners.x; //a coin en haut gauche
     float az = corners.y; 
@@ -297,9 +304,7 @@ std::shared_ptr<Mesh> Mesh::genTerrain(const std::string& filename, const glm::v
         }
     }
 
-    std::cout << mesh->m_vertexPositions.size() << " " << mesh->m_triangleIndices.size();
     free(gray_img);
-    stbi_image_free(heightMap);
     return mesh;
 }
 
