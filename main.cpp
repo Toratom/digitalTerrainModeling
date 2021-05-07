@@ -105,7 +105,7 @@ class Mesh {
 public:
     void init();
     void render();
-    static std::shared_ptr<Mesh> Mesh::genTerrain(const std::string& filename);
+    static std::shared_ptr<Mesh> Mesh::genTerrain(const std::string& filename, const glm::vec4 corners, const glm::vec2 h);
     float getH(unsigned int i, unsigned int j);
     float getIDerivate(unsigned int i, unsigned int j); //Dervive par rapport à i c'est à dire quand passe de ligne i à ligne i + 1 (Z)
     float getJDerivate(unsigned int i, unsigned int j); //Derive par rapport à j (X)
@@ -196,7 +196,7 @@ void Mesh::render() {
 
 
 
-std::shared_ptr<Mesh> Mesh::genTerrain(const std::string& filename) {
+std::shared_ptr<Mesh> Mesh::genTerrain(const std::string& filename, const glm::vec4 corners, const glm::vec2 h) {
     // init cpu
     std::shared_ptr<Mesh> mesh = std::make_shared<Mesh>();
     int width, height, numComponents;
@@ -237,11 +237,11 @@ std::shared_ptr<Mesh> Mesh::genTerrain(const std::string& filename) {
 
     printf("Loaded image with a width of %dpx, a height of %dpx and %d channels\n", width, height, numComponents);
 
-    glm::vec4 corners = glm::vec4(-5.f, -5.f, 5.f, 5.f);
-    glm::vec2 h = glm::vec2(0.f, 1.f);
+    //glm::vec4 corners = glm::vec4(-5.f, -5.f, 5.f, 5.f);
+    //glm::vec2 h = glm::vec2(0.f, 1.f);
 
     float ax = corners.x; //a coin en haut gauche
-    float az = corners.y;
+    float az = corners.y; 
     float bx = corners.z; //b coin en bas droite
     float bz = corners.w;
     float hmin = h.x;
@@ -547,7 +547,7 @@ void initCamera() {
 void init() {
   initGLFW();
   initOpenGL();
-  mesh = Mesh::genTerrain("../data/heightmap4.jpg"); //cpu
+  mesh = Mesh::genTerrain("../data/heightmap4.jpg", glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 1.f)); //cpu
   initGPUprogram();
   //g_sunID = loadTextureFromFileToGPU("../../../media/sun.jpg");
   mesh->init(); //gpu
