@@ -105,7 +105,6 @@ class Mesh {
 public:
     void init();
     void render();
-    unsigned char* loadHeightMapFromFileToMesh(const std::string& filename, int& width, int& height, int& channels);
     static std::shared_ptr<Mesh> Mesh::genTerrain(const std::string& filename, const glm::vec4 corners, const glm::vec2 h);
     float getH(unsigned int i, unsigned int j);
     float getIDerivate(unsigned int i, unsigned int j); //Dervive par rapport à i c'est à dire quand passe de ligne i à ligne i + 1 (Z)
@@ -127,6 +126,7 @@ private:
     GLuint m_normalVbo = 0;
     GLuint m_ibo = 0;
     GLuint m_colVbo = 0;
+    unsigned char* loadHeightMapFromFile(const std::string& filename, int& width, int& height, int& channels);
 };
 std::shared_ptr<Mesh> mesh;
 
@@ -196,7 +196,7 @@ void Mesh::render() {
 }
 
 
-unsigned char* Mesh::loadHeightMapFromFileToMesh(const std::string& filename, int& width, int& height, int& channels) {
+unsigned char* Mesh::loadHeightMapFromFile(const std::string& filename, int& width, int& height, int& channels) {
     
     unsigned char* heightMap = stbi_load(
         filename.c_str(),
@@ -241,7 +241,7 @@ std::shared_ptr<Mesh> Mesh::genTerrain(const std::string& filename, const glm::v
     // init cpu
     std::shared_ptr<Mesh> mesh = std::make_shared<Mesh>();
     int width = 0, height = 0, channels = 0;
-    unsigned char * gray_img = mesh->loadHeightMapFromFileToMesh(filename, width, height, channels);
+    unsigned char * gray_img = mesh->loadHeightMapFromFile(filename, width, height, channels);
 
     //Met a jour la taille de la grille
     mesh->m_gridWidth = width;
