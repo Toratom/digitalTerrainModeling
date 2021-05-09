@@ -126,7 +126,7 @@ private:
     GLuint m_normalVbo = 0;
     GLuint m_ibo = 0;
     GLuint m_colVbo = 0;
-
+    unsigned char* Mesh::createHeightMapFault(const int& width, const int& height);
     unsigned char* loadHeightMapFromFile(const std::string& filename, int& width, int& height, int& channels);
 };
 
@@ -198,6 +198,67 @@ void Mesh::render() {
     glDrawElements(GL_TRIANGLES, m_triangleIndices.size(), GL_UNSIGNED_INT, 0); // Call for rendering: stream the current GPU geometry through the current GPU program
 }
 
+unsigned char* Mesh::createHeightMapFault(const int& width, const int& height) {
+
+    size_t map_size = width * height;
+    unsigned char * heightMap = (unsigned char*) malloc(map_size);
+
+    /*for (int i = 0; i < map_size; i++) {
+        heightMap[i] = 0.f;
+        std::cout << heightMap[i] << std::endl;
+    }*/
+
+    for (unsigned char * p = heightMap, *pg = heightMap; p != heightMap + map_size; p += 1, pg += 1) {
+        *pg = (unsigned char) 0;
+    }
+
+    std::cout << "eee" << heightMap[10] << std::endl;
+
+    float d = sqrt(width * width + height * height);
+    float dy = 1;
+
+    for (int k = 0; k < 300; k++) {
+
+        float v = rand();
+        /*if (k > 1) {
+            v = PI / 2.f;
+        }
+        else {
+            v = 0;
+        }*/
+
+        float a = cos(v);
+        float b = sin(v);
+
+        float c = (cos(rand()) / 2.f + 0.5f) * d - d / 2;
+        //c = 3.f;
+        std::cout << v << " c " << c << " d " << d << " " << a << " " << b << std::endl;
+
+        for (int i = 0; i < height; i++) {
+            for (int j = 0; j < width; j++) {
+
+                int src_index = j + width * i;
+
+                if (a * i + b * j > c) {
+                    heightMap[src_index] += (unsigned char) dy;
+
+                }
+                else {
+                    heightMap[src_index] -= (unsigned char) dy;
+                }
+
+                /*if (i > 1) {
+                    heightMap[src_index] = 120;
+                }*/
+
+                //std::cout << i << " " << j << " " << (float) heightMap[src_index] << " " << (a * i + b * j > c) << std::endl;
+            }
+        }
+    }
+
+    return heightMap;
+}
+
 
 unsigned char* Mesh::loadHeightMapFromFile(const std::string& filename, int& width, int& height, int& channels) {
     
@@ -241,8 +302,10 @@ unsigned char* Mesh::loadHeightMapFromFile(const std::string& filename, int& wid
 }
 
 Mesh::Mesh(const std::string& filename, const glm::vec4& corners, const glm::vec2& h) {
-    int width = 0, height = 0, channels = 0;
-    unsigned char * gray_img = loadHeightMapFromFile(filename, width, height, channels);
+    //int width = 0, height = 0, channels = 0;
+    //unsigned char * gray_img = loadHeightMapFromFile(filename, width, height, channels);
+    int width = 40, height = 40;
+    unsigned char * gray_img = createHeightMapFault(width, height);
 
     //Met a jour la taille de la grille
     m_gridWidth = width;
