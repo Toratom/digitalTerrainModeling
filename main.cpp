@@ -103,6 +103,7 @@ public:
     void render();
     float getH(unsigned int i, unsigned int j) const; //Pour avoir la hauteur issue des différentes epaisseurs des layers au point (i,j) de la grille
     float getLayerThickness(unsigned int k, unsigned int i, unsigned int j) const;
+    float getLayerH(unsigned int k, unsigned int i, unsigned int j) const;
     void setLayerThickness(float value, unsigned int k, unsigned int i, unsigned int j);
     unsigned int getTopLayerId(unsigned int i, unsigned int j) const; //Id de 0 à m_nbOfLayers - 1 correspond à indice dans m_layersColor
     float getIDerivate(unsigned int i, unsigned int j) const; //Dervive par rapport à i c'est à dire quand passe de ligne i à ligne i + 1 (Z)
@@ -360,6 +361,14 @@ unsigned int Mesh::getTopLayerId(unsigned int i, unsigned int j) const {
     return id;
 }
 
+float Mesh::getLayerH(unsigned int k, unsigned int i, unsigned int j) const {
+    float h = 0;
+    for (unsigned int l = 0; l <= k; l = l + 1) {
+        h += getLayerThickness(l, i, j);
+    }
+    return h;
+}
+
 float Mesh::getLayerThickness(unsigned int k, unsigned int i, unsigned int j) const {
     return m_layersThickness[k * m_gridHeight * m_gridHeight + i * m_gridHeight + j];
 }
@@ -373,7 +382,6 @@ void Mesh::setLayerThickness(float value, unsigned int k, unsigned int i, unsign
 }
 
 float Mesh::getH(unsigned int i, unsigned int j) const {
-    unsigned int yIndex = 3 * (i * m_gridWidth + j) + 1;
     float h = 0;
     for (unsigned int k = 0; k < m_nbOfLayers; k = k + 1) {
         h += getLayerThickness(k, i, j);
