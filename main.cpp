@@ -552,7 +552,7 @@ void initCamera() {
 void init() {
   initGLFW();
   initOpenGL();
-  mesh = new Mesh("../data/heightmap3.jpg", glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 1.f)); //cpu
+  mesh = new Mesh("../data/heightmap2.jpg", glm::vec4(-10.f, -10.f, 10.f, 10.f), glm::vec2(0.f, 1.f)); //cpu
   initGPUprogram();
   //g_sunID = loadTextureFromFileToGPU("../../../media/sun.jpg");
   mesh->init(); //gpu
