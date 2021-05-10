@@ -45,11 +45,6 @@ int g_windowHeight = 768;
 // GPU objects
 GLuint g_program = 0; // A GPU program contains at least a vertex shader and a fragment shader
 
-// Constants
-const static float kSizeSun = 1;
-
-GLuint g_sunID = 0;
-
 
 // Basic camera model
 class Camera {
@@ -102,19 +97,29 @@ glm::vec3 g_baseRot(0.0);
 //Mesh
 class Mesh {
 public:
-    Mesh(const std::string& filename, const glm::vec4& corners, const glm::vec2& h);
+    Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec3> layersColor, const glm::vec4& corners, const glm::vec2& e);
 
-    void init();
+    void init(); //Génère la surface à partir des différentes épaisseur de niveau, ces normales, puis envoie l'info au GPU
     void render();
-    float getH(unsigned int i, unsigned int j);
-    float getIDerivate(unsigned int i, unsigned int j); //Dervive par rapport à i c'est à dire quand passe de ligne i à ligne i + 1 (Z)
-    float getJDerivate(unsigned int i, unsigned int j); //Derive par rapport à j (X)
-    glm::vec2 getGradient(unsigned int i, unsigned int j);
+    float getH(unsigned int i, unsigned int j) const; //Pour avoir la hauteur issue des différentes epaisseurs des layers au point (i,j) de la grille
+    float getLayerThickness(unsigned int k, unsigned int i, unsigned int j) const;
+    void setLayerThickness(float value, unsigned int k, unsigned int i, unsigned int j);
+    unsigned int getTopLayerId(unsigned int i, unsigned int j) const; //Id de 0 à m_nbOfLayers - 1 correspond à indice dans m_layersColor
+    float getIDerivate(unsigned int i, unsigned int j) const; //Dervive par rapport à i c'est à dire quand passe de ligne i à ligne i + 1 (Z)
+    float getJDerivate(unsigned int i, unsigned int j) const; //Derive par rapport à j (X)
+    glm::vec2 getGradient(unsigned int i, unsigned int j) const;
+
 private:
     unsigned int m_gridWidth = 0; //Nb de colonnes de la grille de discretisation (image)
     unsigned int m_gridHeight = 0; //Nb de lignes de la grille de discretisation (image)
+    unsigned int m_nbOfLayers = 0;
+    glm::vec2 m_gridTopLeftCorner;
+    glm::vec2 m_gridBottomRightCorner;
     float m_cellWidth = 0;
     float m_cellHeight = 0;
+    std::vector<float> m_layersThickness;
+    std::vector<glm::vec3> m_layersColor;
+
     std::vector<float> m_vertexPositions;
     std::vector<float> m_vertexNormals;
     std::vector<float> m_vertexColors;
@@ -134,6 +139,38 @@ private:
 Mesh* mesh;
 
 void Mesh::init() {
+    //Update cpu
+    float ax = m_gridTopLeftCorner.x; //a coin en haut gauche
+    float az = m_gridTopLeftCorner.y;
+    float bx = m_gridBottomRightCorner.x; //b coin en bas droite
+    float bz = m_gridBottomRightCorner.y;
+    glm::vec2 grad(0.f, 0.f);
+    glm::vec3 normal(0.f, 0.f, 0.f);
+    glm::vec3 color(0.f, 0.f, 0.f);
+    unsigned int ind = 0;
+    for (int i = 0; i < m_gridHeight; i++) {
+        for (int j = 0; j < m_gridWidth; j++) {//On calcule les vecteurs normaux, en utilisant le gradient de la fonction d'élévation
+            grad = getGradient(i, j);
+            normal = glm::normalize(glm::vec3(-grad.y, 1, -grad.x)); //On fait attention bien mettre dans bon ordre i.e. derive par rapport à x, correspond à derive par rapport à j...
+            color = m_layersColor[getTopLayerId(i, j)];
+
+            m_vertexPositions[ind] = (ax + (bx - ax) * j / (m_gridWidth - 1)); //x
+            m_vertexNormals[ind] = normal.x;
+            m_vertexColors[ind] = color.x;
+            ind += 1;
+
+            m_vertexPositions[ind] = getH(i, j); //y
+            m_vertexNormals[ind] = normal.y;
+            m_vertexColors[ind] = color.y;
+            ind += 1;
+
+            m_vertexPositions[ind] = (az + (bz - az) * i / (m_gridWidth - 1)); //z
+            m_vertexNormals[ind] = normal.z;
+            m_vertexColors[ind] = color.z;
+            ind += 1;
+        }
+    }
+
     //Init gpu
     // Create a single handle that joins together attributes (vertex positions,
     // normals) and connectivity (triangles indices)
@@ -158,14 +195,23 @@ void Mesh::init() {
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), 0);
 
-    //Buffer for texture
-    size_t vertexBufferSize3 = sizeof(float) * m_vertexTexCoords.size(); // Gather the size of the buffer from the CPU-side vector
-    glCreateBuffers(1, &m_texCoordsVbo);
-    glNamedBufferStorage(m_texCoordsVbo, vertexBufferSize3, NULL, GL_DYNAMIC_STORAGE_BIT); // Create a data storage on the GPU
-    glNamedBufferSubData(m_texCoordsVbo, 0, vertexBufferSize3, m_vertexTexCoords.data()); // Fill the data storage from a CPU array
-    glBindBuffer(GL_ARRAY_BUFFER, m_texCoordsVbo);
+    //Buffer for color
+    size_t vertexBufferSize3 = sizeof(float) * m_vertexColors.size(); // Gather the size of the buffer from the CPU-side vector
+    glCreateBuffers(1, &m_colVbo);
+    glNamedBufferStorage(m_colVbo, vertexBufferSize3, NULL, GL_DYNAMIC_STORAGE_BIT); // Create a data storage on the GPU
+    glNamedBufferSubData(m_colVbo, 0, vertexBufferSize3, m_vertexColors.data()); // Fill the data storage from a CPU array
+    glBindBuffer(GL_ARRAY_BUFFER, m_colVbo);
     glEnableVertexAttribArray(2);
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), 0);
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), 0);
+
+    //Buffer for texture
+    //size_t vertexBufferSize3 = sizeof(float) * m_vertexTexCoords.size(); // Gather the size of the buffer from the CPU-side vector
+    //glCreateBuffers(1, &m_texCoordsVbo);
+    //glNamedBufferStorage(m_texCoordsVbo, vertexBufferSize3, NULL, GL_DYNAMIC_STORAGE_BIT); // Create a data storage on the GPU
+    //glNamedBufferSubData(m_texCoordsVbo, 0, vertexBufferSize3, m_vertexTexCoords.data()); // Fill the data storage from a CPU array
+    //glBindBuffer(GL_ARRAY_BUFFER, m_texCoordsVbo);
+    //glEnableVertexAttribArray(3);
+    //glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), 0);
 
     // Same for the index buffer that stores the list of indices of the
     // triangles forming the mesh
@@ -240,48 +286,58 @@ unsigned char* Mesh::loadHeightMapFromFile(const std::string& filename, int& wid
     return gray_img;
 }
 
-Mesh::Mesh(const std::string& filename, const glm::vec4& corners, const glm::vec2& h) {
+Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec3> layersColor, const glm::vec4& corners, const glm::vec2& e) {
     int width = 0, height = 0, channels = 0;
-    unsigned char * gray_img = loadHeightMapFromFile(filename, width, height, channels);
 
-    //Met a jour la taille de la grille
-    m_gridWidth = width;
-    m_gridHeight = height;
+    m_nbOfLayers = filenames.size();
+    m_layersColor = layersColor;
+    m_gridTopLeftCorner = glm::vec2(corners.x, corners.y);
+    m_gridBottomRightCorner = glm::vec2(corners.z, corners.w);
+    float emin = e.x;
+    float emax = e.y;
 
-    float ax = corners.x; //a coin en haut gauche
-    float az = corners.y; 
-    float bx = corners.z; //b coin en bas droite
-    float bz = corners.w;
-    float hmin = h.x;
-    float hmax = h.y;
+    for (unsigned int k = 0; k < m_nbOfLayers; k = k + 1) {
+        unsigned char* gray_img = loadHeightMapFromFile(filenames[k], width, height, channels);
 
-    m_cellWidth =  abs(bx - ax) / (width - 1.f);
-    m_cellHeight = abs(bz - az) / (height - 1.f);
+        //Met a jour la taille de la grille avec la valeur de la première map
+        if (k == 0) {
+            m_gridWidth = width;
+            m_gridHeight = height;
 
-    for (int i = 0; i < height; i++) {
-        for (int j = 0; j < width; j++) {
+            m_cellWidth = abs(m_gridBottomRightCorner.x - m_gridTopLeftCorner.x) / (width - 1.f);
+            m_cellHeight = abs(m_gridBottomRightCorner.y - m_gridTopLeftCorner.y) / (height - 1.f);
 
-            m_vertexPositions.push_back(ax + (bx - ax) * j / (width - 1)); //x
+            m_layersThickness.resize(m_nbOfLayers * m_gridWidth * m_gridHeight);
+            m_vertexPositions.resize(3 * m_gridWidth * m_gridHeight);
+            m_vertexNormals.resize(3 * m_gridWidth * m_gridHeight);
+            m_vertexColors.resize(3 * m_gridWidth * m_gridHeight);
 
-            //int src_index = numComponents * j + numComponents * width< * i;
-            int src_index = j + width * i; //Image déroulée ligne par ligne
-
-            m_vertexPositions.push_back((gray_img[src_index] / 255.f * (hmax - hmin) + hmin)); //y
-            m_vertexPositions.push_back(az + (bz - az) * i / (height - 1)); //z
+            for (int i = 0; i < m_gridWidth * m_gridHeight - m_gridWidth; i++) {
+                if (i % m_gridWidth != m_gridWidth - 1) {
+                    m_triangleIndices.push_back(i);
+                    m_triangleIndices.push_back(i + m_gridWidth);
+                    m_triangleIndices.push_back(i + 1);
+                    m_triangleIndices.push_back(i + 1);
+                    m_triangleIndices.push_back(i + m_gridWidth);
+                    m_triangleIndices.push_back(i + m_gridWidth + 1);
+                }
+            }
         }
-    }
 
-    //On calcule les vecteurs normaux, en utilisant le gradient de la fonction d'élévation
-    glm::vec2 grad(0.f, 0.f);
-    glm::vec3 normal(0.f, 0.f, 0.f);
-    for (int i = 0; i < height; i++) {
-        for (int j = 0; j < width; j++) {
-            grad = getGradient(i, j);
-            normal = glm::normalize(glm::vec3(-grad.y, 1, -grad.x)); //On fait attention bien mettre dans bon ordre i.e. derive par rapport à x, correspond à derive par rapport à j...
-            m_vertexNormals.push_back(normal.x);
-            m_vertexNormals.push_back(normal.y);
-            m_vertexNormals.push_back(normal.z);
+        //Verfier que bonne dim
+        if (width != m_gridWidth || height != m_gridHeight) {
+            std::cout << "ERROR : wrong size" << std::endl;
+            break;
         }
+
+        for (int i = 0; i < height; i++) {
+            for (int j = 0; j < width; j++) {
+                int src_index = j + width * i; //Image déroule ligne par ligne numComponents * j + numComponents * width< * i (au cas ou)
+                setLayerThickness(gray_img[src_index] / 255.f * (emax - emin) + emin, k, i, j);
+            }
+        }
+
+        free(gray_img);
     }
 
     //Pour les coordonnées des textures, on avance de 1/resolution pour remplir avec la texture entre 0 et 1
@@ -292,28 +348,40 @@ Mesh::Mesh(const std::string& filename, const glm::vec4& corners, const glm::vec
             m_vertexTexCoords.push_back(float(i) / (height - 1)); //y
         }
     }*/
+}
 
-    for (int i = 0; i < width * height - width; i++) {
+unsigned int Mesh::getTopLayerId(unsigned int i, unsigned int j) const {
+    unsigned int id = m_nbOfLayers - 1;
 
-        if (i % width != width - 1) {
-            m_triangleIndices.push_back(i);
-            m_triangleIndices.push_back(i + width);
-            m_triangleIndices.push_back(i + 1);
-            m_triangleIndices.push_back(i + 1);
-            m_triangleIndices.push_back(i + width);
-            m_triangleIndices.push_back(i + width + 1);
-        }
+    while (getLayerThickness(id, i, j) == 0.f && id > 0) {
+        id = id - 1;
     }
 
-    free(gray_img);
+    return id;
 }
 
-float Mesh::getH(unsigned int i, unsigned int j) {
+float Mesh::getLayerThickness(unsigned int k, unsigned int i, unsigned int j) const {
+    return m_layersThickness[k * m_gridHeight * m_gridHeight + i * m_gridHeight + j];
+}
+
+void Mesh::setLayerThickness(float value, unsigned int k, unsigned int i, unsigned int j) {
+    if (value < 0) {
+        value = 0.f;
+    }
+
+    m_layersThickness[k * m_gridHeight * m_gridHeight + i * m_gridHeight + j] = value;
+}
+
+float Mesh::getH(unsigned int i, unsigned int j) const {
     unsigned int yIndex = 3 * (i * m_gridWidth + j) + 1;
-    return m_vertexPositions[yIndex];
+    float h = 0;
+    for (unsigned int k = 0; k < m_nbOfLayers; k = k + 1) {
+        h += getLayerThickness(k, i, j);
+    }
+    return h;
 }
 
-float Mesh::getIDerivate(unsigned int i, unsigned int j) {
+float Mesh::getIDerivate(unsigned int i, unsigned int j) const {
     //On fait attention au bord
     if (i == 0) {
         return (getH(i + 1, j) - getH(i, j)) / m_cellHeight;
@@ -325,7 +393,7 @@ float Mesh::getIDerivate(unsigned int i, unsigned int j) {
     return (getH(i + 1, j) - getH(i - 1, j)) / (2.f * m_cellHeight);
 }
 
-float Mesh::getJDerivate(unsigned int i, unsigned int j) {
+float Mesh::getJDerivate(unsigned int i, unsigned int j) const {
     //On fait attention au bord
     if (j == 0) {
         return (getH(i, j + 1) - getH(i, j)) / m_cellWidth;
@@ -337,7 +405,7 @@ float Mesh::getJDerivate(unsigned int i, unsigned int j) {
     return (getH(i, j + 1) - getH(i, j - 1)) / (2.f * m_cellWidth);
 }
 
-glm::vec2 Mesh::getGradient(unsigned int i, unsigned int j) {
+glm::vec2 Mesh::getGradient(unsigned int i, unsigned int j) const {
     return glm::vec2(getIDerivate(i, j), getJDerivate(i, j));
 }
 
@@ -552,7 +620,7 @@ void initCamera() {
 void init() {
   initGLFW();
   initOpenGL();
-  mesh = new Mesh("../data/heightmap2.jpg", glm::vec4(-10.f, -10.f, 10.f, 10.f), glm::vec2(0.f, 1.f)); //cpu
+  mesh = new Mesh({ "../data/bedrock.png", "../data/sand.png" }, { glm::vec3(120.f/255.f, 135.f/255.f, 124.f/255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 0.5f)); //cpu
   initGPUprogram();
   //g_sunID = loadTextureFromFileToGPU("../../../media/sun.jpg");
   mesh->init(); //gpu
