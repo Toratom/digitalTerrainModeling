@@ -7,14 +7,13 @@ struct Material {
 };
 uniform Material material;
 
-in vec2 fTexCoord;
-
 uniform vec3 camPos;
 
 vec3 lightSun = vec3(1);
 
 in vec3 fPos;
 in vec3 fNormal;
+in vec2 fTexCoord;
 
 vec3 ka = vec3(0.8);
 
@@ -41,7 +40,7 @@ void main() {
 
 	vec3 texColor = texture(material.albedoTex, fTexCoord).rgb;
 
-	color = vec4(texColor*(diffuse+ambient+specular),1.0);// build an RGBA from an RGB*/
+	//color = vec4(texColor * (diffuse + ambient + specular),1.0);// build an RGBA from an RGB*/
 	color = vec4(normalize(fNormal),1.0);
 
 	//color = vec4(normalize(fNormal).x, 0.f, normalize(fNormal).z, 1.0);

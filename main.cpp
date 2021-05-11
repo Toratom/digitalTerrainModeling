@@ -21,6 +21,10 @@
 #include <glm/glm.hpp>
 #include <glm/ext.hpp>
 
+#include <imgui.h>
+#include <imgui_impl_opengl3.h>
+#include <imgui_impl_glfw.h>
+
 #include <cstdlib>
 #include <iostream>
 #include <fstream>
@@ -41,6 +45,8 @@
 GLFWwindow *g_window = nullptr;
 int g_windowWidth = 1024;
 int g_windowHeight = 768;
+
+GLFWwindow* g_window2 = nullptr;
 
 // GPU objects
 GLuint g_program = 0; // A GPU program contains at least a vertex shader and a fragment shader
@@ -176,6 +182,10 @@ void Mesh::init() {
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_ibo); // bind the IBO storing geometry data
 
     glBindVertexArray(0); // deactivate the VAO for now, will be activated at rendering time
+
+    //unsigned int fbo;
+    //glGenFramebuffers(1, &fbo);
+    //glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 
 }
 
@@ -348,13 +358,13 @@ Mesh::Mesh(const std::string& filename, const glm::vec4& corners, const glm::vec
     }
 
     //Pour les coordonnées des textures, on avance de 1/resolution pour remplir avec la texture entre 0 et 1
-    /*m_vertexTexCoords = {};
+    //m_vertexTexCoords = {};
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < width; j++) {
             m_vertexTexCoords.push_back(float(j) / (width - 1)); //x
             m_vertexTexCoords.push_back(float(i) / (height - 1)); //y
         }
-    }*/
+    }
 
     for (int i = 0; i < width * height - width; i++) {
 
@@ -542,8 +552,9 @@ void initGLFW() {
   // Create the window
   g_window = glfwCreateWindow(
       g_windowWidth, g_windowHeight,
-    "Projet IGR 205",
-    nullptr, nullptr);
+      "Projet IGR 205",
+      nullptr, nullptr);
+
   if(!g_window) {
     std::cerr << "ERROR: Failed to open window" << std::endl;
     glfwTerminate();
@@ -556,6 +567,7 @@ void initGLFW() {
   glfwSetKeyCallback(g_window, keyCallback);
   glfwSetCursorPosCallback(g_window, cursorPosCallback);
   glfwSetMouseButtonCallback(g_window, mouseButtonCallback);
+  glfwSwapInterval(1); // Enable vsync
 }
 
 void initOpenGL() {
@@ -612,17 +624,114 @@ void initCamera() {
   g_camera.setFar(20.0);
 }
 
+void render();
+void clear();
+
+void renderImGui() {
+    // feed inputs to dear imgui, start new frame
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+    /*ImGui::Begin("Triangle Position/Color");
+    ImGui::SetWindowSize(ImVec2(0, 0));
+
+    ImGui::GetWindowDrawList()->AddImage(
+        (void*)glfwGetCurrentContext(),
+        ImVec2(ImGui::GetCursorScreenPos()),
+        ImVec2(ImGui::GetCursorScreenPos().x +100 / 2,
+            ImGui::GetCursorScreenPos().y + 100 / 2), ImVec2(0, 1), ImVec2(1, 0));
+
+    //we are done working with this window
+    ImGui::End();*/
+
+    // render your GUI
+    /*ImGui::Begin("Triangle Position/Color");
+    ImGui::SetWindowSize(ImVec2(0, 0));
+    static float rotation = 0.0;
+    ImGui::SliderFloat("rotation", &rotation, 0, 2 * PI);
+    static float translation[] = { 0.0, 0.0 };
+    ImGui::SliderFloat2("position", translation, -1.0, 1.0);
+    if (ImGui::Button("Update window title")) {
+        glfwSetWindowTitle(g_window, "Tutorial 01");
+    }
+    ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+
+    ImGui::End();*/
+
+    //ImFontAtlas* atlas = new ImFontAtlas();
+    //ImGuiContext* main_context = ImGui::CreateContext(atlas);
+
+    //glfwMakeContextCurrent(g_window);       // Added
+    //ImGui_ImplOpenGL3_Shutdown(); // destroy parent GL objects
+    //ImGui_ImplGlfw_Shutdown();
+    //ImGui context_ = ImGui::CreateContext();
+    //ImGui::SetCurrentContext(ImGui::CreateContext());   // Added
+
+    //draw_all_the_stuff();
+    ImGui::Begin("Triangle Position/Color");
+    ImGui::SetWindowSize(ImVec2(0, 0));
+    static float rotation = 0.0;
+    ImGui::SliderFloat("rotation", &rotation, 0, 2 * PI);
+    static float translation[] = { 0.0, 0.0 };
+    ImGui::SliderFloat2("position", translation, -1.0, 1.0);
+    if (ImGui::Button("Update window title")) {
+        glfwSetWindowTitle(g_window, "Un projet incroyable");
+        clear();
+        render();
+        renderImGui();
+        glfwSwapBuffers(g_window);
+        glfwPollEvents();
+    }
+    ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+
+    ImGui::End();
+
+    /*ImGui::Render();
+    int display_w, display_h;
+    glfwGetFramebufferSize(g_window, &display_w, &display_h);
+    glViewport(0, 0, display_w, display_h);
+    glClearColor(0.18f, 0.18f, 0.18f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    glfwSwapBuffers(g_window);
+    glfwPollEvents();*/
+
+    ImGui::Render();
+    /*int display_w, display_h;
+    glfwGetFramebufferSize(g_window, &display_w, &display_h);
+    glViewport(0, 0, display_w, display_h);
+    glClearColor(0.18f, 0.18f, 0.18f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);*/
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+}
+
+void initImGui() {
+    // Setup Dear ImGui context
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    // Setup Platform/Renderer bindings
+    ImGui_ImplGlfw_InitForOpenGL(g_window, true);
+    ImGui_ImplOpenGL3_Init("#version 130");
+    // Setup Dear ImGui style
+    ImGui::StyleColorsDark();
+}
+
 void init() {
   initGLFW();
   initOpenGL();
   mesh = new Mesh("../data/heightmap3.jpg", glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 1.f)); //cpu
   initGPUprogram();
-  //g_sunID = loadTextureFromFileToGPU("../../../media/sun.jpg");
+  g_sunID = loadTextureFromFileToGPU("../data/heightmap3.jpg");
   mesh->init(); //gpu
   initCamera();
+  initImGui();
 }
 
 void clear() {
+  ImGui_ImplOpenGL3_Shutdown();
+  ImGui_ImplGlfw_Shutdown();
+  ImGui::DestroyContext();
   glDeleteProgram(g_program);
 
   glfwDestroyWindow(g_window);
@@ -644,11 +753,15 @@ void render() {
 
 int main(int argc, char ** argv) {
   init(); // Your initialization code (user interface, OpenGL states, scene with geometry, material, lights, etc)
+
   while(!glfwWindowShouldClose(g_window)) {
     render();
+    renderImGui();
     glfwSwapBuffers(g_window);
     glfwPollEvents();
   }
+
+  // Cleanup
   clear();
   return EXIT_SUCCESS;
 }
