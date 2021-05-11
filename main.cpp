@@ -114,7 +114,7 @@ public:
     float getIDerivate(unsigned int i, unsigned int j) const; //Dervive par rapport à i c'est à dire quand passe de ligne i à ligne i + 1 (Z)
     float getJDerivate(unsigned int i, unsigned int j) const; //Derive par rapport à j (X)
     glm::vec2 getGradient(unsigned int i, unsigned int j) const;
-    void setLayersColors(float rotation);
+    void setLayersColors(int layer, float color[]);
 
 private:
     unsigned int m_gridWidth = 0; //Nb de colonnes de la grille de discretisation (image)
@@ -236,8 +236,10 @@ void Mesh::init() {
 
 }
 
-void Mesh::setLayersColors(float rotation) {
-    m_layersColor = { glm::vec3(rotation / 255.f, 135.f / 255.f, rotation / 255.f), glm::vec3(237.f / 255.f, 2.f / rotation, 200.f / 255.f) };
+void Mesh::setLayersColors(int layer, float color[]) {
+    std::cout << color[0] << " " << color[1] << std::endl;
+    m_layersColor[layer] = glm::vec3(color[0], color[1], color[2]);
+
 }
 
 
@@ -705,13 +707,17 @@ void renderImGui() {
 
     ImGui::Begin("Triangle Position/Color");
     ImGui::SetWindowSize(ImVec2(0, 0));
-    static float rotation = 0.0;
-    ImGui::SliderFloat("rotation", &rotation, 0, 255.f);
+    static float layer1_col = 0.0;
+    ImGui::SliderFloat("Layer 1 color", &layer1_col, 0, 255.f);
+    static float layer2_col = 0.0;
+    ImGui::SliderFloat("Layer 2 color", &layer2_col, 0, 255.f);
     static float translation[] = {0.0, 0.0};
     ImGui::SliderFloat2("position", translation, -1.0, 1.0);
+    static float color[] = { 0.0, 0.0, 0.0 };
+    ImGui::ColorEdit3("color", color);
     if (ImGui::Button("Update window title")) {
         glfwSetWindowTitle(g_window, "Un projet incroyable");
-        mesh->setLayersColors(rotation);
+        mesh->setLayersColors(0, color);
         mesh->init();
     }
     ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
