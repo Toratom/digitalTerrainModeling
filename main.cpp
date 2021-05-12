@@ -799,6 +799,20 @@ void renderImGui() {
         mesh->setLayersColors(0, color);
         mesh->init();
     }
+
+    if (ImGui::Button("Start erosion")) {
+        mesh->thermalErosion(0.52, 0.3, 0.1);
+    }
+
+    if (ImGui::Button("Full surface display")) {
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    }
+
+    if (ImGui::Button("Edged surface display")) {
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    }
+
+
     ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
 
     ImGui::End();
