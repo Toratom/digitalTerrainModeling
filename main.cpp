@@ -779,7 +779,11 @@ int main(int argc, char ** argv) {
 
   while(!glfwWindowShouldClose(g_window)) {
     render();
-    renderImGui();
+
+    //renderImGui();
+    ImGui::NewFrame();
+    ImGui::SetWindowSize(ImVec2(0, 0));
+    ImGui::ShowDemoWindow();
     glfwSwapBuffers(g_window);
     glfwPollEvents();
   }
