@@ -109,12 +109,14 @@ public:
     void render();
     float getH(unsigned int i, unsigned int j) const; //Pour avoir la hauteur issue des différentes epaisseurs des layers au point (i,j) de la grille
     float getLayerThickness(unsigned int k, unsigned int i, unsigned int j) const;
+    float getLayerH(unsigned int k, unsigned int i, unsigned int j) const;
     void setLayerThickness(float value, unsigned int k, unsigned int i, unsigned int j);
     unsigned int getTopLayerId(unsigned int i, unsigned int j) const; //Id de 0 à m_nbOfLayers - 1 correspond à indice dans m_layersColor
     float getIDerivate(unsigned int i, unsigned int j) const; //Dervive par rapport à i c'est à dire quand passe de ligne i à ligne i + 1 (Z)
     float getJDerivate(unsigned int i, unsigned int j) const; //Derive par rapport à j (X)
     glm::vec2 getGradient(unsigned int i, unsigned int j) const;
     void setLayersColors(int layer, float color[]);
+    void thermalErosion(float thetaLimit,float erosionCoeff,float dt);
 
 private:
     unsigned int m_gridWidth = 0; //Nb de colonnes de la grille de discretisation (image)
@@ -438,6 +440,14 @@ unsigned int Mesh::getTopLayerId(unsigned int i, unsigned int j) const {
     return id;
 }
 
+float Mesh::getLayerH(unsigned int k, unsigned int i, unsigned int j) const {
+    float h = 0;
+    for (unsigned int l = 0; l <= k; l = l + 1) {
+        h += getLayerThickness(l, i, j);
+    }
+    return h;
+}
+
 float Mesh::getLayerThickness(unsigned int k, unsigned int i, unsigned int j) const {
     return m_layersThickness[k * m_gridHeight * m_gridHeight + i * m_gridHeight + j];
 }
@@ -451,7 +461,6 @@ void Mesh::setLayerThickness(float value, unsigned int k, unsigned int i, unsign
 }
 
 float Mesh::getH(unsigned int i, unsigned int j) const {
-    unsigned int yIndex = 3 * (i * m_gridWidth + j) + 1;
     float h = 0;
     for (unsigned int k = 0; k < m_nbOfLayers; k = k + 1) {
         h += getLayerThickness(k, i, j);
@@ -485,6 +494,71 @@ float Mesh::getJDerivate(unsigned int i, unsigned int j) const {
 
 glm::vec2 Mesh::getGradient(unsigned int i, unsigned int j) const {
     return glm::vec2(getIDerivate(i, j), getJDerivate(i, j));
+}
+
+void Mesh::thermalErosion(float thetaLimit, float erosionCoeff,float dt) {
+
+    float tangentLimit = glm::tan(thetaLimit);
+    std::cout << m_gridWidth << " " << m_gridHeight << std::endl;
+    std::vector<float> newThickness;
+    std::vector<glm::vec3> newThicknessPositions;
+
+    for (unsigned int i = 0; i < m_gridHeight; i++) {
+        for (unsigned int j = 0; j < m_gridWidth; j++)
+        {   
+            glm::vec2 directionDescent = -getGradient(i, j);
+            float slope = glm::length(directionDescent);
+
+            if (slope > 0) {
+                directionDescent = directionDescent / slope; //normalise la direction de descente
+            }
+            //condition d'érosion
+            if (slope > tangentLimit) {
+
+                float dh = -erosionCoeff * (slope - tangentLimit) * dt;
+
+                int layerIndexCurrentCell = getTopLayerId(i, j);
+
+                //on erode si on est pas le layer le plus bas
+                if (layerIndexCurrentCell > 0) {
+
+                    float newThicknessCurrentCell = getLayerThickness(layerIndexCurrentCell, i, j) + dh;
+                    //std::cout << slope - tangentLimit << " "<< getLayerThickness(layerIndexCurrentCell, i, j) <<" "<< dh << std::endl;
+
+                    if (newThicknessCurrentCell >= 0) {
+                        setLayerThickness(newThicknessCurrentCell, layerIndexCurrentCell, i, j);
+                    }
+                    else {
+                        setLayerThickness(0, layerIndexCurrentCell, i, j); //thickness à 0 au minimum
+                    }
+
+                    //On va maintenant rajouter de la matière sur la cellule dans la direction de plus forte descente
+                    glm::vec2 nextCell = glm::vec2(i, j) + directionDescent;
+                    int nextI = round(nextCell.x);//pour obtenir la cellule i,j dans laquelle on atterit
+                    int nextJ = round(nextCell.y);
+
+                    //gérer les bords, on ne transfère la matière que sur des cellules à l'intérieur
+                    if (nextI >= 0 && nextJ >= 0 && nextI < m_gridHeight && nextJ < m_gridWidth) {
+
+                        unsigned int layerIndexNextCell = getTopLayerId(nextI, nextJ);
+                        float newThicknessNextCell = getLayerThickness(layerIndexNextCell, i, j) - dh;
+
+                        newThicknessPositions.push_back(glm::vec3(i,j,layerIndexNextCell));
+                        newThickness.push_back(newThicknessNextCell);
+                    }
+                }
+                
+            }
+            
+        }
+    }
+
+    for (unsigned int i = 0; i < newThickness.size(); i++) {
+        setLayerThickness(newThickness.at(i), newThicknessPositions.at(i).z, newThicknessPositions.at(i).x, newThicknessPositions.at(i).y);
+    }
+
+    mesh->init();
+    
 }
 
 
@@ -524,6 +598,7 @@ void printHelp()
         "    * Right button: pan camera" << std::endl <<
         "    Keyboard commands:" << std::endl <<
         "    * H: print this help" << std::endl <<
+        "    * E: Thermal Erosion" << std::endl <<
         "    * ESC: quit the program" << std::endl;
 }
 
@@ -543,7 +618,11 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
     glfwSetWindowShouldClose(window, true); // Closes the application if the escape key is pressed
   } else if (action == GLFW_PRESS && key == GLFW_KEY_H) {
      printHelp();
+  } else if (action == GLFW_PRESS && key == GLFW_KEY_E) {
+      mesh->thermalErosion(0.52,0.3,0.1); //0.52 = 30 degrés
+      std::cout << "Thermal Erosion" << std::endl;
   }
+
 }
 
 
@@ -715,7 +794,7 @@ void renderImGui() {
     ImGui::SliderFloat2("position", translation, -1.0, 1.0);
     static float color[] = { 0.0, 0.0, 0.0 };
     ImGui::ColorEdit3("color", color);
-    if (ImGui::Button("Update window title")) {
+    if (ImGui::Button("Update color")) {
         glfwSetWindowTitle(g_window, "Un projet incroyable");
         mesh->setLayersColors(0, color);
         mesh->init();
@@ -779,11 +858,8 @@ int main(int argc, char ** argv) {
 
   while(!glfwWindowShouldClose(g_window)) {
     render();
+    renderImGui();
 
-    //renderImGui();
-    ImGui::NewFrame();
-    ImGui::SetWindowSize(ImVec2(0, 0));
-    ImGui::ShowDemoWindow();
     glfwSwapBuffers(g_window);
     glfwPollEvents();
   }
