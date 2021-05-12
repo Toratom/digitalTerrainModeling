@@ -784,34 +784,89 @@ void renderImGui() {
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-    ImGui::Begin("Triangle Position/Color");
+    ImGui::Begin("Control Widget");
     ImGui::SetWindowSize(ImVec2(0, 0));
     static float layer1_col = 0.0;
-    ImGui::SliderFloat("Layer 1 color", &layer1_col, 0, 255.f);
+    //ImGui::SliderFloat("Layer 1 color", &layer1_col, 0, 255.f);
     static float layer2_col = 0.0;
-    ImGui::SliderFloat("Layer 2 color", &layer2_col, 0, 255.f);
+    //ImGui::SliderFloat("Layer 2 color", &layer2_col, 0, 255.f);
     static float translation[] = {0.0, 0.0};
-    ImGui::SliderFloat2("position", translation, -1.0, 1.0);
-    static float color[] = { 0.0, 0.0, 0.0 };
-    ImGui::ColorEdit3("color", color);
-    if (ImGui::Button("Update color")) {
-        glfwSetWindowTitle(g_window, "Un projet incroyable");
-        mesh->setLayersColors(0, color);
-        mesh->init();
+    //ImGui::SliderFloat2("position", translation, -1.0, 1.0);
+
+    ImGui::Separator();
+
+    ImGui::Text("Erosion:");
+
+    ImGui::Spacing();
+    ImGui::Spacing();
+
+    static float thetaLimit = 0.5;
+    static float erosionCoeff = 0.3;
+    static float dt = 0.1;
+
+    ImGui::SliderFloat("Theta", &thetaLimit, 0, PI);
+    ImGui::SliderFloat("Erosion coefficient", &erosionCoeff, 0, 1);
+    ImGui::SliderFloat("Dt", &dt, 0, 1);
+
+
+    if (ImGui::Button("Start thermal erosion")) {
+        mesh->thermalErosion(thetaLimit, erosionCoeff, dt);
     }
 
-    if (ImGui::Button("Start erosion")) {
+    ImGui::Spacing();
+
+    if (ImGui::Button("Start hydraulique erosion")) {
         mesh->thermalErosion(0.52, 0.3, 0.1);
     }
 
-    if (ImGui::Button("Full surface display")) {
-        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    ImGui::Spacing();
+    ImGui::Spacing();
+    ImGui::Spacing();
+    ImGui::Spacing();
+    ImGui::Spacing();
+
+    if (ImGui::TreeNode("Colors")) {
+        static float color[] = { 0.0, 0.0, 0.0 };
+        ImGui::ColorEdit3("Color", color);
+        if (ImGui::Button("Update color")) {
+            glfwSetWindowTitle(g_window, "Un projet incroyable");
+            mesh->setLayersColors(0, color);
+            mesh->init();
+        }
+        ImGui::TreePop();
     }
 
-    if (ImGui::Button("Edged surface display")) {
-        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    ImGui::Separator();
+
+    if (ImGui::TreeNode("Display")) {
+        static int e = 0;
+        if (ImGui::RadioButton("Edged", &e, 1)) {
+            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        }
+        ImGui::SameLine();
+
+        if (ImGui::RadioButton("Full", &e, 0)) {
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        }
+        ImGui::TreePop();
     }
 
+    ImGui::Separator();
+
+    if (ImGui::TreeNode("Range Widgets"))
+    {
+        static float begin = 10, end = 90;
+        static int begin_i = 100, end_i = 1000;
+        ImGui::DragFloatRange2("range float", &begin, &end, 0.25f, 0.0f, 100.0f, "Min: %.1f %%", "Max: %.1f %%", ImGuiSliderFlags_AlwaysClamp);
+        ImGui::DragIntRange2("range int", &begin_i, &end_i, 5, 0, 1000, "Min: %d units", "Max: %d units");
+        ImGui::DragIntRange2("range int (no bounds)", &begin_i, &end_i, 5, 0, 0, "Min: %d units", "Max: %d units");
+        ImGui::TreePop();
+    }
+
+    ImGui::Separator();
+
+    ImGui::Spacing();
+    ImGui::Spacing();
 
     ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
 
