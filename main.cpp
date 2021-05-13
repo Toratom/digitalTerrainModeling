@@ -21,6 +21,10 @@
 #include <glm/glm.hpp>
 #include <glm/ext.hpp>
 
+#include <imgui.h>
+#include <imgui_impl_opengl3.h>
+#include <imgui_impl_glfw.h>
+
 #include <cstdlib>
 #include <iostream>
 #include <fstream>
@@ -41,6 +45,8 @@
 GLFWwindow *g_window = nullptr;
 int g_windowWidth = 1024;
 int g_windowHeight = 768;
+
+GLFWwindow* g_window2 = nullptr;
 
 // GPU objects
 GLuint g_program = 0; // A GPU program contains at least a vertex shader and a fragment shader
@@ -110,6 +116,7 @@ public:
     float getIDerivate(unsigned int i, unsigned int j) const; //Dervive par rapport à i c'est à dire quand passe de ligne i à ligne i + 1 (Z)
     float getJDerivate(unsigned int i, unsigned int j) const; //Derive par rapport à j (X)
     glm::vec2 getGradient(unsigned int i, unsigned int j) const;
+    void setLayersColors(int layer, float color[]);
     void thermalErosion(float thetaLimit,float erosionCoeff,float dt);
     void applyNThermalErosion(unsigned int N, float thetaLimit, float erosionCoeff, float dt);
 
@@ -135,7 +142,7 @@ private:
     GLuint m_normalVbo = 0;
     GLuint m_ibo = 0;
     GLuint m_colVbo = 0;
-
+    unsigned char* Mesh::createHeightMapFault(const int& width, const int& height);
     unsigned char* loadHeightMapFromFile(const std::string& filename, int& width, int& height, int& channels);
 };
 
@@ -239,6 +246,16 @@ void Mesh::init() {
 
     glBindVertexArray(0); // deactivate the VAO for now, will be activated at rendering time
 
+    //unsigned int fbo;
+    //glGenFramebuffers(1, &fbo);
+    //glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+
+}
+
+void Mesh::setLayersColors(int layer, float color[]) {
+    std::cout << color[0] << " " << color[1] << std::endl;
+    m_layersColor[layer] = glm::vec3(color[0], color[1], color[2]);
+
 }
 
 
@@ -258,6 +275,67 @@ void Mesh::render() {
     
     glBindVertexArray(m_vao);     // bind the VAO storing geometry data
     glDrawElements(GL_TRIANGLES, m_triangleIndices.size(), GL_UNSIGNED_INT, 0); // Call for rendering: stream the current GPU geometry through the current GPU program
+}
+
+unsigned char* Mesh::createHeightMapFault(const int& width, const int& height) {
+
+    size_t map_size = width * height;
+    unsigned char * heightMap = (unsigned char*) malloc(map_size);
+
+    /*for (int i = 0; i < map_size; i++) {
+        heightMap[i] = 0.f;
+        std::cout << heightMap[i] << std::endl;
+    }*/
+
+    for (unsigned char * p = heightMap, *pg = heightMap; p != heightMap + map_size; p += 1, pg += 1) {
+        *pg = (unsigned char) 0;
+    }
+
+    std::cout << "eee" << heightMap[10] << std::endl;
+
+    float d = sqrt(width * width + height * height);
+    float dy = 1;
+
+    for (int k = 0; k < 300; k++) {
+
+        float v = rand();
+        /*if (k > 1) {
+            v = PI / 2.f;
+        }
+        else {
+            v = 0;
+        }*/
+
+        float a = cos(v);
+        float b = sin(v);
+
+        float c = (cos(rand()) / 2.f + 0.5f) * d - d / 2;
+        //c = 3.f;
+        std::cout << v << " c " << c << " d " << d << " " << a << " " << b << std::endl;
+
+        for (int i = 0; i < height; i++) {
+            for (int j = 0; j < width; j++) {
+
+                int src_index = j + width * i;
+
+                if (a * i + b * j > c) {
+                    heightMap[src_index] += (unsigned char) dy;
+
+                }
+                else {
+                    heightMap[src_index] -= (unsigned char) dy;
+                }
+
+                /*if (i > 1) {
+                    heightMap[src_index] = 120;
+                }*/
+
+                //std::cout << i << " " << j << " " << (float) heightMap[src_index] << " " << (a * i + b * j > c) << std::endl;
+            }
+        }
+    }
+
+    return heightMap;
 }
 
 
@@ -302,9 +380,9 @@ unsigned char* Mesh::loadHeightMapFromFile(const std::string& filename, int& wid
     return gray_img;
 }
 
+
 Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec3> layersColor, const glm::vec4& corners, const glm::vec2& e) {
     int width = 0, height = 0, channels = 0;
-
     m_nbOfLayers = filenames.size();
     m_layersColor = layersColor;
     m_gridTopLeftCorner = glm::vec2(corners.x, corners.y);
@@ -359,13 +437,13 @@ Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec
     }
 
     //Pour les coordonnées des textures, on avance de 1/resolution pour remplir avec la texture entre 0 et 1
-    /*m_vertexTexCoords = {};
+    //m_vertexTexCoords = {};
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < width; j++) {
             m_vertexTexCoords.push_back(float(j) / (width - 1)); //x
             m_vertexTexCoords.push_back(float(i) / (height - 1)); //y
         }
-    }*/
+    }
 }
 
 unsigned int Mesh::getTopLayerId(unsigned int i, unsigned int j) const {
@@ -676,8 +754,9 @@ void initGLFW() {
   // Create the window
   g_window = glfwCreateWindow(
       g_windowWidth, g_windowHeight,
-    "Projet IGR 205",
-    nullptr, nullptr);
+      "Projet IGR 205",
+      nullptr, nullptr);
+
   if(!g_window) {
     std::cerr << "ERROR: Failed to open window" << std::endl;
     glfwTerminate();
@@ -690,6 +769,7 @@ void initGLFW() {
   glfwSetKeyCallback(g_window, keyCallback);
   glfwSetCursorPosCallback(g_window, cursorPosCallback);
   glfwSetMouseButtonCallback(g_window, mouseButtonCallback);
+  glfwSwapInterval(1); // Enable vsync
 }
 
 void initOpenGL() {
@@ -746,17 +826,133 @@ void initCamera() {
   g_camera.setFar(20.0);
 }
 
+void render();
+void clear();
+
+void renderImGui() {
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+
+    ImGui::Begin("Control Widget");
+    ImGui::SetWindowSize(ImVec2(0, 0));
+    static float layer1_col = 0.0;
+    //ImGui::SliderFloat("Layer 1 color", &layer1_col, 0, 255.f);
+    static float layer2_col = 0.0;
+    //ImGui::SliderFloat("Layer 2 color", &layer2_col, 0, 255.f);
+    static float translation[] = {0.0, 0.0};
+    //ImGui::SliderFloat2("position", translation, -1.0, 1.0);
+
+    ImGui::Separator();
+
+    ImGui::Text("Erosion:");
+
+    ImGui::Spacing();
+    ImGui::Spacing();
+
+    static float thetaLimit = 0.5;
+    static float erosionCoeff = 0.3;
+    static float dt = 0.1;
+
+    ImGui::SliderFloat("Theta", &thetaLimit, 0, PI);
+    ImGui::SliderFloat("Erosion coefficient", &erosionCoeff, 0, 1);
+    ImGui::SliderFloat("Dt", &dt, 0, 1);
+
+
+    if (ImGui::Button("Start thermal erosion")) {
+        mesh->thermalErosion(thetaLimit, erosionCoeff, dt);
+    }
+
+    ImGui::Spacing();
+
+    if (ImGui::Button("Start hydraulique erosion")) {
+        mesh->thermalErosion(0.52, 0.3, 0.1);
+    }
+
+    ImGui::Spacing();
+    ImGui::Spacing();
+    ImGui::Spacing();
+    ImGui::Spacing();
+    ImGui::Spacing();
+
+    if (ImGui::TreeNode("Colors")) {
+        static float color[] = { 0.0, 0.0, 0.0 };
+        ImGui::ColorEdit3("Color", color);
+        if (ImGui::Button("Update color")) {
+            glfwSetWindowTitle(g_window, "Un projet incroyable");
+            mesh->setLayersColors(0, color);
+            mesh->init();
+        }
+        ImGui::TreePop();
+    }
+
+    ImGui::Separator();
+
+    if (ImGui::TreeNode("Display")) {
+        static int e = 0;
+        if (ImGui::RadioButton("Edged", &e, 1)) {
+            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        }
+        ImGui::SameLine();
+
+        if (ImGui::RadioButton("Full", &e, 0)) {
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        }
+        ImGui::TreePop();
+    }
+
+    ImGui::Separator();
+
+    if (ImGui::TreeNode("Range Widgets"))
+    {
+        static float begin = 10, end = 90;
+        static int begin_i = 100, end_i = 1000;
+        ImGui::DragFloatRange2("range float", &begin, &end, 0.25f, 0.0f, 100.0f, "Min: %.1f %%", "Max: %.1f %%", ImGuiSliderFlags_AlwaysClamp);
+        ImGui::DragIntRange2("range int", &begin_i, &end_i, 5, 0, 1000, "Min: %d units", "Max: %d units");
+        ImGui::DragIntRange2("range int (no bounds)", &begin_i, &end_i, 5, 0, 0, "Min: %d units", "Max: %d units");
+        ImGui::TreePop();
+    }
+
+    ImGui::Separator();
+
+    ImGui::Spacing();
+    ImGui::Spacing();
+
+    ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+
+    ImGui::End();
+
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+}
+
+void initImGui() {
+    // Setup Dear ImGui context
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    // Setup Platform/Renderer bindings
+    ImGui_ImplGlfw_InitForOpenGL(g_window, true);
+    ImGui_ImplOpenGL3_Init("#version 130");
+    // Setup Dear ImGui style
+    ImGui::StyleColorsDark();
+}
+
 void init() {
   initGLFW();
   initOpenGL();
   mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png" }, { glm::vec3(120.f/255.f, 135.f/255.f, 124.f/255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
   initGPUprogram();
-  //g_sunID = loadTextureFromFileToGPU("../../../media/sun.jpg");
+  //g_sunID = loadTextureFromFileToGPU("../data/heightmap3.jpg");
   mesh->init(); //gpu
   initCamera();
+  initImGui();
 }
 
 void clear() {
+  ImGui_ImplOpenGL3_Shutdown();
+  ImGui_ImplGlfw_Shutdown();
+  ImGui::DestroyContext();
   glDeleteProgram(g_program);
 
   glfwDestroyWindow(g_window);
@@ -778,11 +974,16 @@ void render() {
 
 int main(int argc, char ** argv) {
   init(); // Your initialization code (user interface, OpenGL states, scene with geometry, material, lights, etc)
+
   while(!glfwWindowShouldClose(g_window)) {
     render();
+    renderImGui();
+
     glfwSwapBuffers(g_window);
     glfwPollEvents();
   }
+
+  // Cleanup
   clear();
   return EXIT_SUCCESS;
 }

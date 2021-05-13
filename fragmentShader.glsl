@@ -24,8 +24,8 @@ void main() {
 	/*vec3 normal = normalize(fNormal);
 	vec3 lightDirection = normalize(lightSun-fPos);
 	vec3 view = normalize(camPos-fPos);
-	vec3 reflection = 2*dot(normal,lightDirection)*normal - lightDirection;
-
+	//vec3 reflection = 2*dot(normal,lightDirection)*normal - lightDirection;
+	vec3 reflection = normalize(-reflect(lightDirection, lightDirection))
 	vec3 ambient = ka;
 
 	float ln = max(dot(lightDirection,normal),0.0);
@@ -34,9 +34,9 @@ void main() {
 	float rv = max(dot(reflection,view),0.0);
 	vec3 specular = vec3(pow(rv,alpha))*ks;
 
-	vec3 texColor = texture(material.albedoTex, fTexCoord).rgb;
+	vec3 texColor = texture(material.albedoTex, fTexCoord).rgb;*/
 
-	color = vec4(texColor*(diffuse+ambient+specular),1.0);// build an RGBA from an RGB*/
+	//color = vec4(texColor * (diffuse + ambient + specular), 1.0);// build an RGBA from an RGB
 	//color = vec4(normalize(fNormal),1.0);
 	color = vec4(fColor, 1.0);
 

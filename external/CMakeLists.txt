@@ -14,3 +14,7 @@ set_property(TARGET glfw PROPERTY FOLDER "External")
 # GLM for basic mathematical operators
 add_subdirectory(glm)
 
+# IMGUI for interface
+add_subdirectory(imgui)
+set_property(TARGET imgui PROPERTY FOLDER "External")
+
