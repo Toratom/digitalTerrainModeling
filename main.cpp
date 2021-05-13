@@ -106,10 +106,12 @@ public:
     float getLayerH(unsigned int k, unsigned int i, unsigned int j) const;
     void setLayerThickness(float value, unsigned int k, unsigned int i, unsigned int j);
     unsigned int getTopLayerId(unsigned int i, unsigned int j) const; //Id de 0 à m_nbOfLayers - 1 correspond à indice dans m_layersColor
+    glm::uvec2 getLowestNeighbor(unsigned int i, unsigned int j) const;
     float getIDerivate(unsigned int i, unsigned int j) const; //Dervive par rapport à i c'est à dire quand passe de ligne i à ligne i + 1 (Z)
     float getJDerivate(unsigned int i, unsigned int j) const; //Derive par rapport à j (X)
     glm::vec2 getGradient(unsigned int i, unsigned int j) const;
     void thermalErosion(float thetaLimit,float erosionCoeff,float dt);
+    void applyNThermalErosion(unsigned int N, float thetaLimit, float erosionCoeff, float dt);
 
 private:
     unsigned int m_gridWidth = 0; //Nb de colonnes de la grille de discretisation (image)
@@ -155,6 +157,18 @@ void Mesh::init() {
             grad = getGradient(i, j);
             normal = glm::normalize(glm::vec3(-grad.y, 1, -grad.x)); //On fait attention bien mettre dans bon ordre i.e. derive par rapport à x, correspond à derive par rapport à j...
             color = m_layersColor[getTopLayerId(i, j)];
+            //if (i == 26 && j == 34) {
+            //    color = glm::vec3(1.f, 0.f, 0.f);
+            //}
+            //if (i == 26 && j == 35) {
+            //    color = glm::vec3(0.f, 0.f, 1.f);
+            //}
+            //if (i == 27 && j == 35) {
+            //    color = glm::vec3(0.f, 1.f, 0.f);
+            //}
+            //if (i == 50 || j == 50) {
+            //    color = glm::vec3(1.f, 0.f, 0.f);
+            //}
 
             m_vertexPositions[ind] = (ax + (bx - ax) * j / (m_gridWidth - 1)); //x
             m_vertexNormals[ind] = normal.x;
@@ -309,6 +323,8 @@ Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec
             m_cellWidth = abs(m_gridBottomRightCorner.x - m_gridTopLeftCorner.x) / (width - 1.f);
             m_cellHeight = abs(m_gridBottomRightCorner.y - m_gridTopLeftCorner.y) / (height - 1.f);
 
+            std::cout << m_cellHeight << " " << m_cellHeight << std::endl;
+
             m_layersThickness.resize(m_nbOfLayers * m_gridWidth * m_gridHeight);
             m_vertexPositions.resize(3 * m_gridWidth * m_gridHeight);
             m_vertexNormals.resize(3 * m_gridWidth * m_gridHeight);
@@ -370,8 +386,34 @@ float Mesh::getLayerH(unsigned int k, unsigned int i, unsigned int j) const {
     return h;
 }
 
+glm::uvec2 Mesh::getLowestNeighbor(unsigned int i, unsigned int j) const {
+    //Test en connexité 8
+    int lowestDI = -1;
+    int lowestDJ = -1;
+
+    float lowestH = getH(i + lowestDI, j + lowestDJ);
+    float currentH = 0;
+
+    for (int di = -1; di < 2; di += 1) {
+        for (int dj = -1; dj < 2; dj += 1) {
+            currentH = getH(i + di, j + dj);
+            if (currentH < lowestH) {
+                lowestH = currentH;
+                lowestDI = di;
+                lowestDJ = dj;
+            }
+        }
+    }
+
+    return glm::uvec2(i, j) + glm::uvec2(lowestDI, lowestDJ);
+}
+
 float Mesh::getLayerThickness(unsigned int k, unsigned int i, unsigned int j) const {
-    return m_layersThickness[k * m_gridHeight * m_gridHeight + i * m_gridHeight + j];
+    if (i < 0 || i >= m_gridHeight || j < 0 || j >= m_gridWidth) {
+        std::cout << "WARNING : You are loooking outside the grid" << std::endl;
+        return 0;
+    }
+    return m_layersThickness[k * m_gridHeight * m_gridWidth + i * m_gridWidth + j];
 }
 
 void Mesh::setLayerThickness(float value, unsigned int k, unsigned int i, unsigned int j) {
@@ -379,7 +421,7 @@ void Mesh::setLayerThickness(float value, unsigned int k, unsigned int i, unsign
         value = 0.f;
     }
 
-    m_layersThickness[k * m_gridHeight * m_gridHeight + i * m_gridHeight + j] = value;
+    m_layersThickness[k * m_gridHeight * m_gridWidth + i * m_gridWidth + j] = value;
 }
 
 float Mesh::getH(unsigned int i, unsigned int j) const {
@@ -399,6 +441,7 @@ float Mesh::getIDerivate(unsigned int i, unsigned int j) const {
         return (getH(i, j) - getH(i - 1, j)) / m_cellHeight;
     }
     
+    //return (getH(i + 1, j) - getH(i, j)) / m_cellHeight;
     return (getH(i + 1, j) - getH(i - 1, j)) / (2.f * m_cellHeight);
 }
 
@@ -411,6 +454,7 @@ float Mesh::getJDerivate(unsigned int i, unsigned int j) const {
         return (getH(i, j) - getH(i, j - 1)) / m_cellWidth;
     }
 
+    //return (getH(i, j + 1) - getH(i, j)) / m_cellWidth;
     return (getH(i, j + 1) - getH(i, j - 1)) / (2.f * m_cellWidth);
 }
 
@@ -418,12 +462,11 @@ glm::vec2 Mesh::getGradient(unsigned int i, unsigned int j) const {
     return glm::vec2(getIDerivate(i, j), getJDerivate(i, j));
 }
 
-void Mesh::thermalErosion(float thetaLimit, float erosionCoeff,float dt) {
+void Mesh::thermalErosion(float thetaLimit, float erosionCoeff, float dt) {
 
     float tangentLimit = glm::tan(thetaLimit);
     std::cout << m_gridWidth << " " << m_gridHeight << std::endl;
-    std::vector<float> newThickness;
-    std::vector<glm::vec3> newThicknessPositions;
+    std::vector<float> newLayersThickness = m_layersThickness;
 
     for (unsigned int i = 0; i < m_gridHeight; i++) {
         for (unsigned int j = 0; j < m_gridWidth; j++)
@@ -434,39 +477,43 @@ void Mesh::thermalErosion(float thetaLimit, float erosionCoeff,float dt) {
             if (slope > 0) {
                 directionDescent = directionDescent / slope; //normalise la direction de descente
             }
+
             //condition d'érosion
             if (slope > tangentLimit) {
-
-                float dh = -erosionCoeff * (slope - tangentLimit) * dt;
-
                 int layerIndexCurrentCell = getTopLayerId(i, j);
+
+                float dh = -erosionCoeff * (slope - tangentLimit) * dt; // ? Pb dh peut-être plus grand que l'epaisseur du layer
+                if (-dh > getLayerThickness(layerIndexCurrentCell, i, j)) {
+                    dh = - getLayerThickness(layerIndexCurrentCell, i, j);
+                }
 
                 //on erode si on est pas le layer le plus bas
                 if (layerIndexCurrentCell > 0) {
 
                     float newThicknessCurrentCell = getLayerThickness(layerIndexCurrentCell, i, j) + dh;
-                    //std::cout << slope - tangentLimit << " "<< getLayerThickness(layerIndexCurrentCell, i, j) <<" "<< dh << std::endl;
 
-                    if (newThicknessCurrentCell >= 0) {
-                        setLayerThickness(newThicknessCurrentCell, layerIndexCurrentCell, i, j);
-                    }
-                    else {
-                        setLayerThickness(0, layerIndexCurrentCell, i, j); //thickness à 0 au minimum
-                    }
+                    newLayersThickness[layerIndexCurrentCell * m_gridHeight * m_gridWidth + i * m_gridWidth + j] = (newThicknessCurrentCell > 0) ? newThicknessCurrentCell : 0.f;
 
                     //On va maintenant rajouter de la matière sur la cellule dans la direction de plus forte descente
-                    glm::vec2 nextCell = glm::vec2(i, j) + directionDescent;
-                    int nextI = round(nextCell.x);//pour obtenir la cellule i,j dans laquelle on atterit
-                    int nextJ = round(nextCell.y);
+                    //glm::vec2 nextCell = glm::vec2(i, j) + directionDescent; // ? Pose pb ? Essayer prendre la cellule voisine la plus basse
+                    //int nextI = round(nextCell.x);//pour obtenir la cellule i,j dans laquelle on atterit
+                    //int nextJ = round(nextCell.y);
+                    glm::uvec2 nextCell = getLowestNeighbor(i, j); // ? Pose pb ? Essayer prendre la cellule voisine la plus basse
+                    unsigned int nextI = nextCell.x;//pour obtenir la cellule i,j dans laquelle on atterit
+                    unsigned int nextJ = nextCell.y;
+
+                    //Etude du cas (26, 34) de qui il recoit de la matiere (i == 26 && j == 34) || (i == 27 && j == 34) || (i == 26 && j == 33) || (i == 26 && j == 35) || (i == 27 && j == 35)
+                    if ((i == 61 && j == 62) || (i == 36 && j == 37)) {
+                        if (getH(nextI, nextJ) > getH(i, j)) {
+                            std::cout << "PB ";
+                        }
+                        std::cout << "i "<< i << " j " << j << " Dir - grad " << directionDescent.x << " " << directionDescent.y << -dh << " nextI " << nextI << " NextJ " << nextJ << std::endl;
+                    }
 
                     //gérer les bords, on ne transfère la matière que sur des cellules à l'intérieur
                     if (nextI >= 0 && nextJ >= 0 && nextI < m_gridHeight && nextJ < m_gridWidth) {
-
-                        unsigned int layerIndexNextCell = getTopLayerId(nextI, nextJ);
-                        float newThicknessNextCell = getLayerThickness(layerIndexNextCell, i, j) - dh;
-
-                        newThicknessPositions.push_back(glm::vec3(i,j,layerIndexNextCell));
-                        newThickness.push_back(newThicknessNextCell);
+                        float newThicknessNextCell = getLayerThickness(layerIndexCurrentCell, nextI, nextJ) - dh;
+                        newLayersThickness[layerIndexCurrentCell * m_gridHeight * m_gridWidth + nextI * m_gridWidth + nextJ] = newThicknessNextCell;
                     }
                 }
                 
@@ -475,12 +522,15 @@ void Mesh::thermalErosion(float thetaLimit, float erosionCoeff,float dt) {
         }
     }
 
-    for (unsigned int i = 0; i < newThickness.size(); i++) {
-        setLayerThickness(newThickness.at(i), newThicknessPositions.at(i).z, newThicknessPositions.at(i).x, newThicknessPositions.at(i).y);
-    }
+    m_layersThickness = newLayersThickness;
 
     mesh->init();
-    
+}
+
+void Mesh::applyNThermalErosion(unsigned int N, float thetaLimit, float erosionCoeff, float dt) {
+    for (unsigned int i = 0; i < N; i += 1) {
+        thermalErosion(thetaLimit, erosionCoeff, dt);
+    }
 }
 
 
@@ -541,7 +591,7 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
   } else if (action == GLFW_PRESS && key == GLFW_KEY_H) {
      printHelp();
   } else if (action == GLFW_PRESS && key == GLFW_KEY_E) {
-      mesh->thermalErosion(0.52,0.3,0.1); //0.52 = 30 degrés
+      mesh->applyNThermalErosion(100, 0.52, 0.3, 0.001); //0.52 = 30 degrés  dt = 0.001
       std::cout << "Thermal Erosion" << std::endl;
   }
 
@@ -699,7 +749,7 @@ void initCamera() {
 void init() {
   initGLFW();
   initOpenGL();
-  mesh = new Mesh({ "../data/bedrock.png", "../data/sand.png" }, { glm::vec3(120.f/255.f, 135.f/255.f, 124.f/255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 0.5f)); //cpu
+  mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png" }, { glm::vec3(120.f/255.f, 135.f/255.f, 124.f/255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
   initGPUprogram();
   //g_sunID = loadTextureFromFileToGPU("../../../media/sun.jpg");
   mesh->init(); //gpu
