@@ -581,12 +581,12 @@ void Mesh::thermalErosion(float thetaLimit, float erosionCoeff, float dt) {
                     unsigned int nextJ = nextCell.y;
 
                     //Etude du cas (26, 34) de qui il recoit de la matiere (i == 26 && j == 34) || (i == 27 && j == 34) || (i == 26 && j == 33) || (i == 26 && j == 35) || (i == 27 && j == 35)
-                    if ((i == 61 && j == 62) || (i == 36 && j == 37)) {
-                        if (getH(nextI, nextJ) > getH(i, j)) {
-                            std::cout << "PB ";
-                        }
-                        std::cout << "i "<< i << " j " << j << " Dir - grad " << directionDescent.x << " " << directionDescent.y << -dh << " nextI " << nextI << " NextJ " << nextJ << std::endl;
-                    }
+                    //if ((i == 61 && j == 62) || (i == 36 && j == 37)) {
+                    //    if (getH(nextI, nextJ) > getH(i, j)) {
+                    //        std::cout << "PB ";
+                    //    }
+                    //    std::cout << "i "<< i << " j " << j << " Dir - grad " << directionDescent.x << " " << directionDescent.y << -dh << " nextI " << nextI << " NextJ " << nextJ << std::endl;
+                    //}
 
                     //gérer les bords, on ne transfère la matière que sur des cellules à l'intérieur
                     if (nextI >= 0 && nextJ >= 0 && nextI < m_gridHeight && nextJ < m_gridWidth) {
@@ -850,13 +850,13 @@ void renderImGui() {
     ImGui::Spacing();
     ImGui::Spacing();
 
-    static float thetaLimit = 0.5;
+    static float thetaLimit = 0.3;
     static float erosionCoeff = 0.3;
-    static float dt = 0.1;
+    static float dt = 0.0001;
 
-    ImGui::SliderFloat("Theta", &thetaLimit, 0, PI);
+    ImGui::SliderFloat("Theta", &thetaLimit, 0, PI/2);
     ImGui::SliderFloat("Erosion coefficient", &erosionCoeff, 0, 1);
-    ImGui::SliderFloat("Dt", &dt, 0, 1);
+    ImGui::SliderFloat("Dt", &dt, 0, 1); //Faudrait plutot 0.000001 à 0.1 genre juste les puissance de 10 si possible
 
 
     if (ImGui::Button("Start thermal erosion")) {
@@ -866,7 +866,7 @@ void renderImGui() {
     ImGui::Spacing();
 
     if (ImGui::Button("Start hydraulique erosion")) {
-        mesh->thermalErosion(0.52, 0.3, 0.1);
+        mesh->thermalErosion(0.3, 0.3, 0.0001);
     }
 
     ImGui::Spacing();
