@@ -6,17 +6,13 @@ struct Material {
 uniform Material material;
 uniform vec3 camPos;
 
-in vec2 fTexCoord;
+//in vec2 fTexCoord;
 in vec3 fPos;
-in vec3 fNormal;
+//in vec3 fNormal;
 in vec3 fColor;
 
 out vec4 color;	  // Shader output: the color response attached to this fragment
 
-vec3 lightSun = vec3(1);
-vec3 ka = vec3(0.8);
-vec3 kd = vec3(0.5);
-vec3 ks = vec3(0.8);
 float alpha = 20;
 
 void main() {

@@ -48,9 +48,21 @@ int g_windowHeight = 768;
 
 GLFWwindow* g_window2 = nullptr;
 
-// GPU objects
-GLuint g_program = 0; // A GPU program contains at least a vertex shader and a fragment shader
 
+//GPU objects - Program
+GLuint g_program = 0; // A GPU program contains at least a vertex shader and a fragment shader
+GLuint g_computeProgram = 0; //GPU program for compute shader
+//GPU objects - Buffers
+//GLuint g_colVbo = 0;
+//GLuint g_terrainNormalVbo = 0; //Normale au sol calculer par un compute shader
+GLuint g_gridPosVbo = 0; //Un vbo qui donne le z (i) et x (j) des points de la grille
+GLuint g_terrainLayersHeightVbo = 0; //b0(i,j), b1(i,j), ..., bNbOfLayers(i,j) ... Donne l'epaisseur des différents layers AU MAX 4 LAYERS (sans compter l'eau)
+GLuint g_waterPropsVbo = 0; //d, s, fL, fR, fT, fB, u, v
+//... Cf article pour autre buffer necessaire
+GLuint g_ibo = 0;
+
+//Debug
+float* points;
 
 // Basic camera model
 class Camera {
@@ -104,243 +116,121 @@ glm::vec3 g_baseRot(0.0);
 class Mesh {
 public:
     Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec3> layersColor, const glm::vec4& corners, const glm::vec2& e);
-
-    void init(); //Génère la surface à partir des différentes épaisseur de niveau, ces normales, puis envoie l'info au GPU
-    void render();
-    float getH(unsigned int i, unsigned int j) const; //Pour avoir la hauteur issue des différentes epaisseurs des layers au point (i,j) de la grille
+    const std::vector<unsigned int>& getTriangleIndices() const;
     float getLayerThickness(unsigned int k, unsigned int i, unsigned int j) const;
-    float getLayerH(unsigned int k, unsigned int i, unsigned int j) const;
-    void setLayerThickness(float value, unsigned int k, unsigned int i, unsigned int j);
-    unsigned int getTopLayerId(unsigned int i, unsigned int j) const; //Id de 0 à m_nbOfLayers - 1 correspond à indice dans m_layersColor
-    glm::uvec2 getLowestNeighbor(unsigned int i, unsigned int j) const;
-    float getIDerivate(unsigned int i, unsigned int j) const; //Dervive par rapport à i c'est à dire quand passe de ligne i à ligne i + 1 (Z)
-    float getJDerivate(unsigned int i, unsigned int j) const; //Derive par rapport à j (X)
-    glm::vec2 getGradient(unsigned int i, unsigned int j) const;
-    void setLayersColors(int layer, float color[]);
-    void thermalErosion(float thetaLimit,float erosionCoeff,float dt);
-    void applyNThermalErosion(unsigned int N, float thetaLimit, float erosionCoeff, float dt);
+    float getH(unsigned int i, unsigned int j) const;
+    glm::vec2 getGridPos(unsigned int i, unsigned int j) const;
+    unsigned int getGridWidth() const;
+    unsigned int getGridHeight() const;
+    unsigned int getNbOfLayers() const;
+    float getCellWidth() const;
+    float getCellHeight() const;
+    void render();
 
 private:
     unsigned int m_gridWidth = 0; //Nb de colonnes de la grille de discretisation (image)
     unsigned int m_gridHeight = 0; //Nb de lignes de la grille de discretisation (image)
-    unsigned int m_nbOfLayers = 0;
-    glm::vec2 m_gridTopLeftCorner;
-    glm::vec2 m_gridBottomRightCorner;
+    unsigned int m_nbOfLayers = 0; //AU PLUS 4
     float m_cellWidth = 0;
     float m_cellHeight = 0;
+    glm::vec2 m_gridTopLeftCorner;
+    glm::vec2 m_gridBottomRightCorner;
     std::vector<float> m_layersThickness;
     std::vector<glm::vec3> m_layersColor;
-
-    std::vector<float> m_vertexPositions;
-    std::vector<float> m_vertexNormals;
-    std::vector<float> m_vertexColors;
+    std::vector<glm::vec2> m_gridPositions;
     std::vector<unsigned int> m_triangleIndices;
-    std::vector<float> m_vertexTexCoords;
-    GLuint m_texCoordsVbo = 0;
-    GLuint m_vao = 0;
-    GLuint m_posVbo = 0;
-    GLuint m_normalVbo = 0;
-    GLuint m_ibo = 0;
-    GLuint m_colVbo = 0;
+    unsigned int m_vao;
+
     unsigned char* Mesh::createHeightMapFault(const int& width, const int& height);
     unsigned char* loadHeightMapFromFile(const std::string& filename, int& width, int& height, int& channels);
+    void setLayerThickness(float value, unsigned int k, unsigned int i, unsigned int j);
 };
 
 //Mesh CPU
 Mesh* mesh;
 
-void Mesh::init() {
-    //Update cpu
-    float ax = m_gridTopLeftCorner.x; //a coin en haut gauche
-    float az = m_gridTopLeftCorner.y;
-    float bx = m_gridBottomRightCorner.x; //b coin en bas droite
-    float bz = m_gridBottomRightCorner.y;
-    glm::vec2 grad(0.f, 0.f);
-    glm::vec3 normal(0.f, 0.f, 0.f);
-    glm::vec3 color(0.f, 0.f, 0.f);
-    unsigned int ind = 0;
-    for (int i = 0; i < m_gridHeight; i++) {
-        for (int j = 0; j < m_gridWidth; j++) {//On calcule les vecteurs normaux, en utilisant le gradient de la fonction d'élévation
-            grad = getGradient(i, j);
-            normal = glm::normalize(glm::vec3(-grad.y, 1, -grad.x)); //On fait attention bien mettre dans bon ordre i.e. derive par rapport à x, correspond à derive par rapport à j...
-            color = m_layersColor[getTopLayerId(i, j)];
-            //if (i == 26 && j == 34) {
-            //    color = glm::vec3(1.f, 0.f, 0.f);
-            //}
-            //if (i == 26 && j == 35) {
-            //    color = glm::vec3(0.f, 0.f, 1.f);
-            //}
-            //if (i == 27 && j == 35) {
-            //    color = glm::vec3(0.f, 1.f, 0.f);
-            //}
-            //if (i == 50 || j == 50) {
-            //    color = glm::vec3(1.f, 0.f, 0.f);
-            //}
+const std::vector<unsigned int>& Mesh::getTriangleIndices() const {
+    return m_triangleIndices;
+}
 
-            m_vertexPositions[ind] = (ax + (bx - ax) * j / (m_gridWidth - 1)); //x
-            m_vertexNormals[ind] = normal.x;
-            m_vertexColors[ind] = color.x;
-            ind += 1;
+float Mesh::getCellHeight() const {
+    return m_cellHeight;
+}
 
-            m_vertexPositions[ind] = getH(i, j); //y
-            m_vertexNormals[ind] = normal.y;
-            m_vertexColors[ind] = color.y;
-            ind += 1;
+float Mesh::getCellWidth() const {
+    return m_cellWidth;
+}
 
-            m_vertexPositions[ind] = (az + (bz - az) * i / (m_gridWidth - 1)); //z
-            m_vertexNormals[ind] = normal.z;
-            m_vertexColors[ind] = color.z;
-            ind += 1;
-        }
+unsigned int Mesh::getGridHeight() const {
+    return m_gridHeight;
+}
+
+unsigned int Mesh::getGridWidth() const {
+    return m_gridWidth;
+}
+
+unsigned int Mesh::getNbOfLayers() const {
+    return m_nbOfLayers;
+}
+
+float Mesh::getLayerThickness(unsigned int k, unsigned int i, unsigned int j) const {
+    if (i < 0 || i >= m_gridHeight || j < 0 || j >= m_gridWidth) {
+        std::cout << "WARNING : You are loooking outside the grid" << std::endl;
+        return 0;
+    }
+    return m_layersThickness[k * m_gridHeight * m_gridWidth + i * m_gridWidth + j];
+}
+
+float Mesh::getH(unsigned int i, unsigned int j) const {
+    float h = 0;
+    for (unsigned int k = 0; k < m_nbOfLayers; k = k + 1) {
+        h += getLayerThickness(k, i, j);
+    }
+    return h;
+}
+
+void Mesh::setLayerThickness(float value, unsigned int k, unsigned int i, unsigned int j) {
+    if (value < 0) {
+        value = 0.f;
     }
 
-    //Init gpu
-    // Create a single handle that joins together attributes (vertex positions,
-    // normals) and connectivity (triangles indices)
-    glCreateVertexArrays(1, &m_vao);
-    glBindVertexArray(m_vao);
-
-    // Generate a GPU buffer to store the positions of the vertices
-    size_t vertexBufferSize = sizeof(float) * m_vertexPositions.size(); // Gather the size of the buffer from the CPU-side vector
-    glCreateBuffers(1, &m_posVbo);
-    glNamedBufferStorage(m_posVbo, vertexBufferSize, NULL, GL_DYNAMIC_STORAGE_BIT); // Create a data storage on the GPU
-    glNamedBufferSubData(m_posVbo, 0, vertexBufferSize, m_vertexPositions.data()); // Fill the data storage from a CPU array
-    glBindBuffer(GL_ARRAY_BUFFER, m_posVbo);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), 0);
-
-    //Buffer for normal
-    size_t vertexBufferSize2 = sizeof(float) * m_vertexNormals.size(); // Gather the size of the buffer from the CPU-side vector
-    glCreateBuffers(1, &m_normalVbo);
-    glNamedBufferStorage(m_normalVbo, vertexBufferSize2, NULL, GL_DYNAMIC_STORAGE_BIT); // Create a data storage on the GPU
-    glNamedBufferSubData(m_normalVbo, 0, vertexBufferSize2, m_vertexNormals.data()); // Fill the data storage from a CPU array
-    glBindBuffer(GL_ARRAY_BUFFER, m_normalVbo);
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), 0);
-
-    //Buffer for color
-    size_t vertexBufferSize3 = sizeof(float) * m_vertexColors.size(); // Gather the size of the buffer from the CPU-side vector
-    glCreateBuffers(1, &m_colVbo);
-    glNamedBufferStorage(m_colVbo, vertexBufferSize3, NULL, GL_DYNAMIC_STORAGE_BIT); // Create a data storage on the GPU
-    glNamedBufferSubData(m_colVbo, 0, vertexBufferSize3, m_vertexColors.data()); // Fill the data storage from a CPU array
-    glBindBuffer(GL_ARRAY_BUFFER, m_colVbo);
-    glEnableVertexAttribArray(2);
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), 0);
-
-    //Buffer for texture
-    //size_t vertexBufferSize3 = sizeof(float) * m_vertexTexCoords.size(); // Gather the size of the buffer from the CPU-side vector
-    //glCreateBuffers(1, &m_texCoordsVbo);
-    //glNamedBufferStorage(m_texCoordsVbo, vertexBufferSize3, NULL, GL_DYNAMIC_STORAGE_BIT); // Create a data storage on the GPU
-    //glNamedBufferSubData(m_texCoordsVbo, 0, vertexBufferSize3, m_vertexTexCoords.data()); // Fill the data storage from a CPU array
-    //glBindBuffer(GL_ARRAY_BUFFER, m_texCoordsVbo);
-    //glEnableVertexAttribArray(3);
-    //glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), 0);
-
-    // Same for the index buffer that stores the list of indices of the
-    // triangles forming the mesh
-    size_t indexBufferSize = sizeof(unsigned int) * m_triangleIndices.size();
-    glCreateBuffers(1, &m_ibo);
-    glNamedBufferStorage(m_ibo, indexBufferSize, NULL, GL_DYNAMIC_STORAGE_BIT);
-    glNamedBufferSubData(m_ibo, 0, indexBufferSize, m_triangleIndices.data());
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_ibo); // bind the IBO storing geometry data
-
-    glBindVertexArray(0); // deactivate the VAO for now, will be activated at rendering time
-
-    //unsigned int fbo;
-    //glGenFramebuffers(1, &fbo);
-    //glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-
+    m_layersThickness[k * m_gridHeight * m_gridWidth + i * m_gridWidth + j] = value;
 }
 
-void Mesh::setLayersColors(int layer, float color[]) {
-    std::cout << color[0] << " " << color[1] << std::endl;
-    m_layersColor[layer] = glm::vec3(color[0], color[1], color[2]);
-
+glm::vec2 Mesh::getGridPos(unsigned int i, unsigned int j) const {
+    //Return posI, posJ donc Z puis X
+    return m_gridPositions[i * m_gridWidth + j];
 }
-
 
 void Mesh::render() {
-    const glm::vec3 camPosition = g_camera.getPosition();
-    glUniform3f(glGetUniformLocation(g_program, "camPos"), camPosition[0], camPosition[1], camPosition[2]);
-
     glm::mat4 model = glm::mat4(1.f); //matrice modele
-    GLuint g_textureID = 0; 
 
     //On donne la matrice du modèle au vertex shader et les couleurs au fragment shader
     glUniformMatrix4fv(glGetUniformLocation(g_program, "modelMat"), 1, GL_FALSE, glm::value_ptr(model)); 
     
-    glActiveTexture(GL_TEXTURE0);
-    glUniform1i(glGetUniformLocation(g_program, "material.albedoTex"), 0);
-    glBindTexture(GL_TEXTURE_2D, g_textureID);
     
-    glBindVertexArray(m_vao);     // bind the VAO storing geometry data
+    glBindVertexArray(m_vao);
+    
+    // bind the buffers
+    glBindBuffer(GL_ARRAY_BUFFER, g_gridPosVbo);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), (void*) 0);
+    glEnableVertexAttribArray(0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, g_terrainLayersHeightVbo);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 1 * sizeof(GLfloat), 0); //Pour plus de layer faire un shader par layer et load le bon dans initGPUPrograms
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_ibo);
+
+
+    //Draw
     glDrawElements(GL_TRIANGLES, m_triangleIndices.size(), GL_UNSIGNED_INT, 0); // Call for rendering: stream the current GPU geometry through the current GPU program
+
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
-
-unsigned char* Mesh::createHeightMapFault(const int& width, const int& height) {
-
-    size_t map_size = width * height;
-    unsigned char * heightMap = (unsigned char*) malloc(map_size);
-
-    /*for (int i = 0; i < map_size; i++) {
-        heightMap[i] = 0.f;
-        std::cout << heightMap[i] << std::endl;
-    }*/
-
-    for (unsigned char * p = heightMap, *pg = heightMap; p != heightMap + map_size; p += 1, pg += 1) {
-        *pg = (unsigned char) 0;
-    }
-
-    std::cout << "eee" << heightMap[10] << std::endl;
-
-    float d = sqrt(width * width + height * height);
-    float dy = 1;
-
-    for (int k = 0; k < 300; k++) {
-
-        float v = rand();
-        /*if (k > 1) {
-            v = PI / 2.f;
-        }
-        else {
-            v = 0;
-        }*/
-
-        float a = cos(v);
-        float b = sin(v);
-
-        float c = (cos(rand()) / 2.f + 0.5f) * d - d / 2;
-        //c = 3.f;
-        std::cout << v << " c " << c << " d " << d << " " << a << " " << b << std::endl;
-
-        for (int i = 0; i < height; i++) {
-            for (int j = 0; j < width; j++) {
-
-                int src_index = j + width * i;
-
-                if (a * i + b * j > c) {
-                    heightMap[src_index] += (unsigned char) dy;
-
-                }
-                else {
-                    heightMap[src_index] -= (unsigned char) dy;
-                }
-
-                /*if (i > 1) {
-                    heightMap[src_index] = 120;
-                }*/
-
-                //std::cout << i << " " << j << " " << (float) heightMap[src_index] << " " << (a * i + b * j > c) << std::endl;
-            }
-        }
-    }
-
-    return heightMap;
-}
-
 
 unsigned char* Mesh::loadHeightMapFromFile(const std::string& filename, int& width, int& height, int& channels) {
-    
     unsigned char* heightMap = stbi_load(
         filename.c_str(),
         &width, &height,
@@ -380,15 +270,20 @@ unsigned char* Mesh::loadHeightMapFromFile(const std::string& filename, int& wid
     return gray_img;
 }
 
-
 Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec3> layersColor, const glm::vec4& corners, const glm::vec2& e) {
     int width = 0, height = 0, channels = 0;
     m_nbOfLayers = filenames.size();
     m_layersColor = layersColor;
     m_gridTopLeftCorner = glm::vec2(corners.x, corners.y);
     m_gridBottomRightCorner = glm::vec2(corners.z, corners.w);
+    float ax = m_gridTopLeftCorner.x; //a coin en haut gauche
+    float az = m_gridTopLeftCorner.y;
+    float bx = m_gridBottomRightCorner.x; //b coin en bas droite
+    float bz = m_gridBottomRightCorner.y;
     float emin = e.x;
     float emax = e.y;
+
+    glGenVertexArrays(1, &m_vao);
 
     for (unsigned int k = 0; k < m_nbOfLayers; k = k + 1) {
         unsigned char* gray_img = loadHeightMapFromFile(filenames[k], width, height, channels);
@@ -401,12 +296,10 @@ Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec
             m_cellWidth = abs(m_gridBottomRightCorner.x - m_gridTopLeftCorner.x) / (width - 1.f);
             m_cellHeight = abs(m_gridBottomRightCorner.y - m_gridTopLeftCorner.y) / (height - 1.f);
 
-            std::cout << m_cellHeight << " " << m_cellHeight << std::endl;
+            std::cout << m_cellHeight << " " << m_cellWidth << std::endl;
 
             m_layersThickness.resize(m_nbOfLayers * m_gridWidth * m_gridHeight);
-            m_vertexPositions.resize(3 * m_gridWidth * m_gridHeight);
-            m_vertexNormals.resize(3 * m_gridWidth * m_gridHeight);
-            m_vertexColors.resize(3 * m_gridWidth * m_gridHeight);
+            m_gridPositions.resize(m_gridWidth * m_gridHeight);
 
             for (int i = 0; i < m_gridWidth * m_gridHeight - m_gridWidth; i++) {
                 if (i % m_gridWidth != m_gridWidth - 1) {
@@ -416,6 +309,14 @@ Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec
                     m_triangleIndices.push_back(i + 1);
                     m_triangleIndices.push_back(i + m_gridWidth);
                     m_triangleIndices.push_back(i + m_gridWidth + 1);
+                }
+            }
+
+            unsigned int ind = 0;
+            for (int i = 0; i < m_gridHeight; i++) {
+                for (int j = 0; j < m_gridWidth; j++) {
+                    m_gridPositions[ind] = glm::vec2((az + (bz - az) * i / (m_gridWidth - 1)), (ax + (bx - ax) * j / (m_gridHeight - 1))); //i puis j donc z puis x
+                    ind += 1;
                 }
             }
         }
@@ -438,179 +339,13 @@ Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec
 
     //Pour les coordonnées des textures, on avance de 1/resolution pour remplir avec la texture entre 0 et 1
     //m_vertexTexCoords = {};
-    for (int i = 0; i < height; i++) {
-        for (int j = 0; j < width; j++) {
-            m_vertexTexCoords.push_back(float(j) / (width - 1)); //x
-            m_vertexTexCoords.push_back(float(i) / (height - 1)); //y
-        }
-    }
+    //for (int i = 0; i < height; i++) {
+    //    for (int j = 0; j < width; j++) {
+    //        m_vertexTexCoords.push_back(float(j) / (width - 1)); //x
+    //        m_vertexTexCoords.push_back(float(i) / (height - 1)); //y
+    //    }
+    //}
 }
-
-unsigned int Mesh::getTopLayerId(unsigned int i, unsigned int j) const {
-    unsigned int id = m_nbOfLayers - 1;
-
-    while (getLayerThickness(id, i, j) == 0.f && id > 0) {
-        id = id - 1;
-    }
-
-    return id;
-}
-
-float Mesh::getLayerH(unsigned int k, unsigned int i, unsigned int j) const {
-    float h = 0;
-    for (unsigned int l = 0; l <= k; l = l + 1) {
-        h += getLayerThickness(l, i, j);
-    }
-    return h;
-}
-
-glm::uvec2 Mesh::getLowestNeighbor(unsigned int i, unsigned int j) const {
-    //Test en connexité 8
-    int lowestDI = -1;
-    int lowestDJ = -1;
-
-    float lowestH = getH(i + lowestDI, j + lowestDJ);
-    float currentH = 0;
-
-    for (int di = -1; di < 2; di += 1) {
-        for (int dj = -1; dj < 2; dj += 1) {
-            currentH = getH(i + di, j + dj);
-            if (currentH < lowestH) {
-                lowestH = currentH;
-                lowestDI = di;
-                lowestDJ = dj;
-            }
-        }
-    }
-
-    return glm::uvec2(i, j) + glm::uvec2(lowestDI, lowestDJ);
-}
-
-float Mesh::getLayerThickness(unsigned int k, unsigned int i, unsigned int j) const {
-    if (i < 0 || i >= m_gridHeight || j < 0 || j >= m_gridWidth) {
-        std::cout << "WARNING : You are loooking outside the grid" << std::endl;
-        return 0;
-    }
-    return m_layersThickness[k * m_gridHeight * m_gridWidth + i * m_gridWidth + j];
-}
-
-void Mesh::setLayerThickness(float value, unsigned int k, unsigned int i, unsigned int j) {
-    if (value < 0) {
-        value = 0.f;
-    }
-
-    m_layersThickness[k * m_gridHeight * m_gridWidth + i * m_gridWidth + j] = value;
-}
-
-float Mesh::getH(unsigned int i, unsigned int j) const {
-    float h = 0;
-    for (unsigned int k = 0; k < m_nbOfLayers; k = k + 1) {
-        h += getLayerThickness(k, i, j);
-    }
-    return h;
-}
-
-float Mesh::getIDerivate(unsigned int i, unsigned int j) const {
-    //On fait attention au bord
-    if (i == 0) {
-        return (getH(i + 1, j) - getH(i, j)) / m_cellHeight;
-    }
-    if (i == m_gridHeight - 1) {
-        return (getH(i, j) - getH(i - 1, j)) / m_cellHeight;
-    }
-    
-    //return (getH(i + 1, j) - getH(i, j)) / m_cellHeight;
-    return (getH(i + 1, j) - getH(i - 1, j)) / (2.f * m_cellHeight);
-}
-
-float Mesh::getJDerivate(unsigned int i, unsigned int j) const {
-    //On fait attention au bord
-    if (j == 0) {
-        return (getH(i, j + 1) - getH(i, j)) / m_cellWidth;
-    }
-    if (j == m_gridWidth - 1) {
-        return (getH(i, j) - getH(i, j - 1)) / m_cellWidth;
-    }
-
-    //return (getH(i, j + 1) - getH(i, j)) / m_cellWidth;
-    return (getH(i, j + 1) - getH(i, j - 1)) / (2.f * m_cellWidth);
-}
-
-glm::vec2 Mesh::getGradient(unsigned int i, unsigned int j) const {
-    return glm::vec2(getIDerivate(i, j), getJDerivate(i, j));
-}
-
-void Mesh::thermalErosion(float thetaLimit, float erosionCoeff, float dt) {
-
-    float tangentLimit = glm::tan(thetaLimit);
-    std::cout << m_gridWidth << " " << m_gridHeight << std::endl;
-    std::vector<float> newLayersThickness = m_layersThickness;
-
-    for (unsigned int i = 0; i < m_gridHeight; i++) {
-        for (unsigned int j = 0; j < m_gridWidth; j++)
-        {   
-            glm::vec2 directionDescent = -getGradient(i, j);
-            float slope = glm::length(directionDescent);
-
-            if (slope > 0) {
-                directionDescent = directionDescent / slope; //normalise la direction de descente
-            }
-
-            //condition d'érosion
-            if (slope > tangentLimit) {
-                int layerIndexCurrentCell = getTopLayerId(i, j);
-
-                float dh = -erosionCoeff * (slope - tangentLimit) * dt; // ? Pb dh peut-être plus grand que l'epaisseur du layer
-                if (-dh > getLayerThickness(layerIndexCurrentCell, i, j)) {
-                    dh = - getLayerThickness(layerIndexCurrentCell, i, j);
-                }
-
-                //on erode si on est pas le layer le plus bas
-                if (layerIndexCurrentCell > 0) {
-
-                    float newThicknessCurrentCell = getLayerThickness(layerIndexCurrentCell, i, j) + dh;
-
-                    newLayersThickness[layerIndexCurrentCell * m_gridHeight * m_gridWidth + i * m_gridWidth + j] = (newThicknessCurrentCell > 0) ? newThicknessCurrentCell : 0.f;
-
-                    //On va maintenant rajouter de la matière sur la cellule dans la direction de plus forte descente
-                    //glm::vec2 nextCell = glm::vec2(i, j) + directionDescent; // ? Pose pb ? Essayer prendre la cellule voisine la plus basse
-                    //int nextI = round(nextCell.x);//pour obtenir la cellule i,j dans laquelle on atterit
-                    //int nextJ = round(nextCell.y);
-                    glm::uvec2 nextCell = getLowestNeighbor(i, j); // ? Pose pb ? Essayer prendre la cellule voisine la plus basse
-                    unsigned int nextI = nextCell.x;//pour obtenir la cellule i,j dans laquelle on atterit
-                    unsigned int nextJ = nextCell.y;
-
-                    //Etude du cas (26, 34) de qui il recoit de la matiere (i == 26 && j == 34) || (i == 27 && j == 34) || (i == 26 && j == 33) || (i == 26 && j == 35) || (i == 27 && j == 35)
-                    //if ((i == 61 && j == 62) || (i == 36 && j == 37)) {
-                    //    if (getH(nextI, nextJ) > getH(i, j)) {
-                    //        std::cout << "PB ";
-                    //    }
-                    //    std::cout << "i "<< i << " j " << j << " Dir - grad " << directionDescent.x << " " << directionDescent.y << -dh << " nextI " << nextI << " NextJ " << nextJ << std::endl;
-                    //}
-
-                    //gérer les bords, on ne transfère la matière que sur des cellules à l'intérieur
-                    if (nextI >= 0 && nextJ >= 0 && nextI < m_gridHeight && nextJ < m_gridWidth) {
-                        float newThicknessNextCell = getLayerThickness(layerIndexCurrentCell, nextI, nextJ) - dh;
-                        newLayersThickness[layerIndexCurrentCell * m_gridHeight * m_gridWidth + nextI * m_gridWidth + nextJ] = newThicknessNextCell;
-                    }
-                }
-                
-            }
-            
-        }
-    }
-
-    m_layersThickness = newLayersThickness;
-
-    mesh->init();
-}
-
-void Mesh::applyNThermalErosion(unsigned int N, float thetaLimit, float erosionCoeff, float dt) {
-    for (unsigned int i = 0; i < N; i += 1) {
-        thermalErosion(thetaLimit, erosionCoeff, dt);
-    }
-}
-
 
 GLuint loadTextureFromFileToGPU(const std::string &filename) {
   int width, height, numComponents;
@@ -668,11 +403,7 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
     glfwSetWindowShouldClose(window, true); // Closes the application if the escape key is pressed
   } else if (action == GLFW_PRESS && key == GLFW_KEY_H) {
      printHelp();
-  } else if (action == GLFW_PRESS && key == GLFW_KEY_E) {
-      mesh->applyNThermalErosion(100, 0.52, 0.3, 0.001); //0.52 = 30 degrés  dt = 0.001
-      std::cout << "Thermal Erosion" << std::endl;
   }
-
 }
 
 
@@ -795,26 +526,135 @@ std::string file2String(const std::string &filename) {
   return buffer.str();
 }
 
+//Test if there are errors in the bind shader
+void CheckGlErrors(std::string caller) {
+    unsigned int glerr = glGetError();
+    if (glerr == GL_NO_ERROR)
+        return;
+
+    std::cout << "GL Error discovered from caller " << caller << std::endl;
+    switch (glerr) {
+    case GL_INVALID_ENUM:
+        std::cout << "Invalid enum" << std::endl;
+        break;
+    case GL_INVALID_VALUE:
+        std::cout << "Invalid value" << std::endl;
+        break;
+    case GL_INVALID_OPERATION:
+        std::cout << "Invalid Operation" << std::endl;
+        break;
+    case GL_STACK_OVERFLOW:
+        std::cout << "Stack overflow" << std::endl;
+        break;
+    case GL_STACK_UNDERFLOW:
+        std::cout << "Stack underflow" << std::endl;
+        break;
+    case GL_OUT_OF_MEMORY:
+        std::cout << "Out of memory" << std::endl;
+        break;
+    default:
+        std::cout << "Unknown OpenGL error: " << glerr << std::endl;
+    }
+}
+
 // Loads and compile a shader, before attaching it to a program
 void loadShader(GLuint program, GLenum type, const std::string &shaderFilename) {
-  GLuint shader = glCreateShader(type); // Create the shader, e.g., a vertex shader to be applied to every single vertex of a mesh
-  std::string shaderSourceString = file2String(shaderFilename); // Loads the shader source from a file to a C++ string
-  const GLchar *shaderSource = (const GLchar *)shaderSourceString.c_str(); // Interface the C++ string through a C pointer
-  glShaderSource(shader, 1, &shaderSource, NULL); // load the vertex shader code
-  glCompileShader(shader);
-  glAttachShader(program, shader);
-  glDeleteShader(shader);
+    int status = 0;
+    int logLength = 0;
+    GLuint shader = glCreateShader(type); // Create the shader, e.g., a vertex shader to be applied to every single vertex of a mesh
+    std::string shaderSourceString = file2String(shaderFilename); // Loads the shader source from a file to a C++ string
+    const GLchar *shaderSource = (const GLchar *)shaderSourceString.c_str(); // Interface the C++ string through a C pointer
+    glShaderSource(shader, 1, &shaderSource, NULL); // load the vertex shader code
+    glCompileShader(shader);
+    CheckGlErrors(shaderFilename + " 1");
+
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
+    if (status == GL_FALSE) {
+        std::cout << "Shader compilation failed : " << shaderFilename << std::endl;
+        glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &logLength);
+        GLchar* log = new GLchar[logLength];
+        glGetShaderInfoLog(shader, logLength, NULL, log);
+        std::cout << "Log (len) " << logLength << " : " << log << std::endl;
+        delete[] log;
+        exit(1);
+    }
+
+    CheckGlErrors(shaderFilename + " 2");
+    glAttachShader(program, shader);
+    glDeleteShader(shader);
 }
 
-void initGPUprogram() {
-  g_program = glCreateProgram(); // Create a GPU program, i.e., two central shaders of the graphics pipeline
-  loadShader(g_program, GL_VERTEX_SHADER, "../vertexShader.glsl");
-  loadShader(g_program, GL_FRAGMENT_SHADER, "../fragmentShader.glsl");
-  glLinkProgram(g_program); // The main GPU program is ready to be handle streams of polygons
+void initGPUprograms() {
+    int status = 0;
+    int logLength = 0;
+    //Programm for Vertex and Fragment Shaders
+    g_program = glCreateProgram(); // Create a GPU program, i.e., two central shaders of the graphics pipeline
+    loadShader(g_program, GL_VERTEX_SHADER, "../vertexShader.glsl");
+    loadShader(g_program, GL_FRAGMENT_SHADER, "../fragmentShader.glsl");
+    glLinkProgram(g_program); // The main GPU program is ready to be handle streams of polygons
+    CheckGlErrors("Shader Program 1");
 
-  glUseProgram(g_program);
+    glGetProgramiv(g_program, GL_LINK_STATUS, &status);
+    if (status == GL_FALSE)
+    {
+        std::cout << "Link failed" << std::endl;
+        glGetProgramiv(g_program, GL_INFO_LOG_LENGTH, &logLength);
+        GLchar* log = new GLchar[logLength];
+        glGetProgramInfoLog(g_program, logLength, NULL, log);
+        std::cout << log << std::endl;
+        delete[] log;
+        exit(1);
+    }
+
+    CheckGlErrors("Shader Program 2");
+
+
+    //Programm for compute shader
+    //g_computeProgram = glCreateProgram();
+    //loadShader(g_computeProgram, GL_COMPUTE_SHADER, "../computeShader.glsl");
+    //glLinkProgram(g_computeProgram);
+    //CheckGlErrors("Compute Shader");
 }
 
+void initBuffers() {
+    std::vector<float> gridPosTmp;
+    for (unsigned int i = 0; i < mesh->getGridHeight(); i += 1) {
+        for (unsigned int j = 0; j < mesh->getGridWidth(); j += 1) {
+            gridPosTmp.push_back(mesh->getGridPos(i, j).x);
+            gridPosTmp.push_back(mesh->getGridPos(i, j).y);
+        }
+    }
+    size_t vertexBufferSize = sizeof(float) * gridPosTmp.size();
+    glCreateBuffers(1, &g_gridPosVbo);
+    glBindBuffer(GL_ARRAY_BUFFER, g_gridPosVbo);
+    glBufferStorage(GL_ARRAY_BUFFER, vertexBufferSize, gridPosTmp.data(), GL_DYNAMIC_STORAGE_BIT | GL_MAP_READ_BIT); //Le flag plutot 0 que GL_DYNAMIC_STORAGE_BIT ?
+
+    std::vector<float> terrainPropsTmp;
+    float currentLayerHeight = 0.f;
+    for (unsigned int i = 0; i < mesh->getGridHeight(); i += 1) {
+        for (unsigned int j = 0; j < mesh->getGridWidth(); j += 1) {
+            for (unsigned int k = 0; k < 4; k += 1) {
+                currentLayerHeight = (k < mesh->getNbOfLayers()) ? mesh->getLayerThickness(k, i, j) : 0.f;
+                terrainPropsTmp.push_back(currentLayerHeight);
+            }
+        }
+    }
+    vertexBufferSize = sizeof(float) * terrainPropsTmp.size();
+    glCreateBuffers(1, &g_terrainLayersHeightVbo);
+    glBindBuffer(GL_ARRAY_BUFFER, g_terrainLayersHeightVbo);
+    glBufferStorage(GL_ARRAY_BUFFER, vertexBufferSize, terrainPropsTmp.data(), 0);
+
+    //g_waterPropsVbo = 0; //d, s, fL, fR, fT, fB, u, v
+
+    vertexBufferSize = sizeof(unsigned int) * mesh->getTriangleIndices().size();
+    glCreateBuffers(1, &g_ibo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_ibo);
+    glBufferStorage(GL_ELEMENT_ARRAY_BUFFER, vertexBufferSize, mesh->getTriangleIndices().data(), 0);
+
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
 
 void initCamera() {
   int width, height;
@@ -858,35 +698,9 @@ void renderImGui() {
     ImGui::SliderFloat("Erosion coefficient", &erosionCoeff, 0, 1);
     ImGui::SliderFloat("Dt", &dt, 0, 1); //Faudrait plutot 0.000001 à 0.1 genre juste les puissance de 10 si possible
 
-
-    if (ImGui::Button("Start thermal erosion")) {
-        mesh->thermalErosion(thetaLimit, erosionCoeff, dt);
-    }
-
-    ImGui::Spacing();
-
-    if (ImGui::Button("Start hydraulique erosion")) {
-        mesh->thermalErosion(0.3, 0.3, 0.0001);
-    }
-
-    ImGui::Spacing();
-    ImGui::Spacing();
-    ImGui::Spacing();
-    ImGui::Spacing();
-    ImGui::Spacing();
-
-    if (ImGui::TreeNode("Colors")) {
-        static float color[] = { 0.0, 0.0, 0.0 };
-        ImGui::ColorEdit3("Color", color);
-        if (ImGui::Button("Update color")) {
-            glfwSetWindowTitle(g_window, "Un projet incroyable");
-            mesh->setLayersColors(0, color);
-            mesh->init();
-        }
-        ImGui::TreePop();
-    }
-
-    ImGui::Separator();
+    //if (ImGui::Button("Start thermal erosion")) {
+    //    mesh->thermalErosion(thetaLimit, erosionCoeff, dt);
+    //}
 
     if (ImGui::TreeNode("Display")) {
         static int e = 0;
@@ -939,24 +753,25 @@ void initImGui() {
 }
 
 void init() {
-  initGLFW();
-  initOpenGL();
-  mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png" }, { glm::vec3(120.f/255.f, 135.f/255.f, 124.f/255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
-  initGPUprogram();
-  //g_sunID = loadTextureFromFileToGPU("../data/heightmap3.jpg");
-  mesh->init(); //gpu
-  initCamera();
-  initImGui();
+    initGLFW();
+    initOpenGL();
+    //Pour l'instant ne fonctionne qu'en mode 1 layer...
+    mesh = new Mesh({ "../data/small.png" }, {glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
+    //g_sunID = loadTextureFromFileToGPU("../data/heightmap3.jpg");
+    initGPUprograms();
+    initBuffers();
+    initCamera();
+    initImGui();
 }
 
 void clear() {
-  ImGui_ImplOpenGL3_Shutdown();
-  ImGui_ImplGlfw_Shutdown();
-  ImGui::DestroyContext();
-  glDeleteProgram(g_program);
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+    glDeleteProgram(g_program);
 
-  glfwDestroyWindow(g_window);
-  glfwTerminate();
+    glfwDestroyWindow(g_window);
+    glfwTerminate();
 }
 
 // The main rendering call
@@ -965,26 +780,37 @@ void render() {
 
     const glm::mat4 viewMatrix = g_camera.computeViewMatrix();
     const glm::mat4 projMatrix = g_camera.computeProjectionMatrix();
+    const glm::vec3 camPosition = g_camera.getPosition();
 
     glUniformMatrix4fv(glGetUniformLocation(g_program, "viewMat"), 1, GL_FALSE, glm::value_ptr(viewMatrix)); // compute the view matrix of the camera and pass it to the GPU program
     glUniformMatrix4fv(glGetUniformLocation(g_program, "projMat"), 1, GL_FALSE, glm::value_ptr(projMatrix)); // compute the projection matrix of the camera and pass it to the GPU program
-    
+    glUniform3f(glGetUniformLocation(g_program, "camPos"), camPosition[0], camPosition[1], camPosition[2]);
+
     mesh->render();
 }
 
 int main(int argc, char ** argv) {
-  init(); // Your initialization code (user interface, OpenGL states, scene with geometry, material, lights, etc)
+    init(); // Your initialization code (user interface, OpenGL states, scene with geometry, material, lights, etc)
 
-  while(!glfwWindowShouldClose(g_window)) {
-    render();
-    renderImGui();
+    while(!glfwWindowShouldClose(g_window)) {
+        //Phase de calculs :
+        //Bind les buffer du compute shader
+        //Appelle au compute shader
+        //glUseProgram(g_computeProgram);
+        //glDispatchCompute(NUM_PARTICLES / WORK_GROUP_SIZE, 1, 1); //Changer pour avoir dimesion 2D de l'espace d'invocation
+        //glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
-    glfwSwapBuffers(g_window);
-    glfwPollEvents();
-  }
+        //Phase de rendering :
+        glUseProgram(g_program);
+        render();
+        renderImGui();
 
-  // Cleanup
-  clear();
-  return EXIT_SUCCESS;
+        glfwSwapBuffers(g_window);
+        glfwPollEvents();
+    }
+
+    // Cleanup
+    clear();
+    return EXIT_SUCCESS;
 }
 
