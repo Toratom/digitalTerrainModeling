@@ -41,6 +41,11 @@
 
 #define PI 3.141592
 
+#define PATCH_HEIGHT 32
+#define PATCH_WIDTH 32
+unsigned int g_nbGroupsX = 0;
+unsigned int g_nbGroupsY = 0;
+
 // Window parameters
 GLFWwindow *g_window = nullptr;
 int g_windowWidth = 1024;
@@ -56,7 +61,8 @@ GLuint g_computeProgram = 0; //GPU program for compute shader
 //GLuint g_colVbo = 0;
 //GLuint g_terrainNormalVbo = 0; //Normale au sol calculer par un compute shader
 GLuint g_gridPosVbo = 0; //Un vbo qui donne le z (i) et x (j) des points de la grille
-GLuint g_terrainLayersHeightVbo = 0; //b0(i,j), b1(i,j), ..., bNbOfLayers(i,j) ... Donne l'epaisseur des différents layers AU MAX 4 LAYERS (sans compter l'eau)
+GLuint g_terrainLayersHeightVboR = 0; //b0(i,j), b1(i,j), ..., bNbOfLayers(i,j) ... Donne l'epaisseur des différents layers AU MAX 4 LAYERS (sans compter l'eau)
+GLuint g_terrainLayersHeightVboW = 0; //R aura le role de t et W de t + dt (puis swap) : en pratique on lit dans celui pointé par R et on écrit dans celui pointé par W
 GLuint g_waterPropsVbo = 0; //d, s, fL, fR, fT, fB, u, v
 //... Cf article pour autre buffer necessaire
 GLuint g_ibo = 0;
@@ -216,7 +222,7 @@ void Mesh::render() {
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), (void*) 0);
     glEnableVertexAttribArray(0);
 
-    glBindBuffer(GL_ARRAY_BUFFER, g_terrainLayersHeightVbo);
+    glBindBuffer(GL_ARRAY_BUFFER, g_terrainLayersHeightVboR);
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 1 * sizeof(GLfloat), 0); //Pour plus de layer faire un shader par layer et load le bon dans initGPUPrograms
 
@@ -597,11 +603,11 @@ void initGPUprograms() {
     glGetProgramiv(g_program, GL_LINK_STATUS, &status);
     if (status == GL_FALSE)
     {
-        std::cout << "Link failed" << std::endl;
+        std::cout << "Link failed Shader Program " << std::endl;
         glGetProgramiv(g_program, GL_INFO_LOG_LENGTH, &logLength);
         GLchar* log = new GLchar[logLength];
         glGetProgramInfoLog(g_program, logLength, NULL, log);
-        std::cout << log << std::endl;
+        std::cout << "Log (len) " << logLength << " : " << log << std::endl;
         delete[] log;
         exit(1);
     }
@@ -610,13 +616,36 @@ void initGPUprograms() {
 
 
     //Programm for compute shader
-    //g_computeProgram = glCreateProgram();
-    //loadShader(g_computeProgram, GL_COMPUTE_SHADER, "../computeShader.glsl");
-    //glLinkProgram(g_computeProgram);
-    //CheckGlErrors("Compute Shader");
+    g_computeProgram = glCreateProgram();
+    loadShader(g_computeProgram, GL_COMPUTE_SHADER, "../computeShader.glsl");
+    glLinkProgram(g_computeProgram);
+    CheckGlErrors("Compute Shader 1");
+
+    glGetProgramiv(g_computeProgram, GL_LINK_STATUS, &status);
+    if (status == GL_FALSE)
+    {
+        std::cout << "Link failed Compute Shader" << std::endl;
+        glGetProgramiv(g_computeProgram, GL_INFO_LOG_LENGTH, &logLength);
+        GLchar* log = new GLchar[logLength];
+        glGetProgramInfoLog(g_computeProgram, logLength, NULL, log);
+        std::cout << "Log (len) " << logLength << " : " << log << std::endl;
+        delete[] log;
+        exit(1);
+    }
+
+    CheckGlErrors("Compute Shader 2");
+
+    //Calcul des dims de l'espace d'invocation
+    g_nbGroupsX = (mesh->getGridHeight() + PATCH_HEIGHT - 1) / PATCH_HEIGHT;
+    g_nbGroupsY = (mesh->getGridWidth() + PATCH_WIDTH - 1) / PATCH_WIDTH;
 }
 
-void initBuffers() {
+void initBuffersAndUniforms() {
+    //Uniforms
+    glUniform1ui(glGetUniformLocation(g_computeProgram, "gridHeight"), mesh->getGridHeight());
+    glUniform1ui(glGetUniformLocation(g_computeProgram, "gridWidth"), mesh->getGridWidth());
+
+    //Buffers :
     std::vector<float> gridPosTmp;
     for (unsigned int i = 0; i < mesh->getGridHeight(); i += 1) {
         for (unsigned int j = 0; j < mesh->getGridWidth(); j += 1) {
@@ -627,21 +656,27 @@ void initBuffers() {
     size_t vertexBufferSize = sizeof(float) * gridPosTmp.size();
     glCreateBuffers(1, &g_gridPosVbo);
     glBindBuffer(GL_ARRAY_BUFFER, g_gridPosVbo);
-    glBufferStorage(GL_ARRAY_BUFFER, vertexBufferSize, gridPosTmp.data(), GL_DYNAMIC_STORAGE_BIT | GL_MAP_READ_BIT); //Le flag plutot 0 que GL_DYNAMIC_STORAGE_BIT ?
+    glBufferStorage(GL_ARRAY_BUFFER, vertexBufferSize, gridPosTmp.data(), 0); //Le flag plutot 0 que GL_DYNAMIC_STORAGE_BIT ?
 
     std::vector<float> terrainPropsTmp;
-    float currentLayerHeight = 0.f;
     for (unsigned int i = 0; i < mesh->getGridHeight(); i += 1) {
         for (unsigned int j = 0; j < mesh->getGridWidth(); j += 1) {
-            for (unsigned int k = 0; k < 4; k += 1) {
-                currentLayerHeight = (k < mesh->getNbOfLayers()) ? mesh->getLayerThickness(k, i, j) : 0.f;
-                terrainPropsTmp.push_back(currentLayerHeight);
+            for (unsigned int k = 0; k < mesh->getNbOfLayers(); k += 1) {
+                terrainPropsTmp.push_back(mesh->getLayerThickness(k, i, j));
             }
         }
     }
     vertexBufferSize = sizeof(float) * terrainPropsTmp.size();
-    glCreateBuffers(1, &g_terrainLayersHeightVbo);
-    glBindBuffer(GL_ARRAY_BUFFER, g_terrainLayersHeightVbo);
+    glCreateBuffers(1, &g_terrainLayersHeightVboR);
+    glBindBuffer(GL_ARRAY_BUFFER, g_terrainLayersHeightVboR);
+    glBufferStorage(GL_ARRAY_BUFFER, vertexBufferSize, terrainPropsTmp.data(), 0);
+
+    for (unsigned int i = 0; i < terrainPropsTmp.size(); i += 1) {
+        terrainPropsTmp[i] = 0.f;
+    }
+    vertexBufferSize = sizeof(float) * terrainPropsTmp.size();
+    glCreateBuffers(1, &g_terrainLayersHeightVboW);
+    glBindBuffer(GL_ARRAY_BUFFER, g_terrainLayersHeightVboW);
     glBufferStorage(GL_ARRAY_BUFFER, vertexBufferSize, terrainPropsTmp.data(), 0);
 
     //g_waterPropsVbo = 0; //d, s, fL, fR, fT, fB, u, v
@@ -756,10 +791,10 @@ void init() {
     initGLFW();
     initOpenGL();
     //Pour l'instant ne fonctionne qu'en mode 1 layer...
-    mesh = new Mesh({ "../data/small.png" }, {glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
+    mesh = new Mesh({ "../data/heightmap4.jpg" }, {glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 1.f)); //cpu
     //g_sunID = loadTextureFromFileToGPU("../data/heightmap3.jpg");
-    initGPUprograms();
-    initBuffers();
+    initGPUprograms(); //Init aussi les dimension de l'espace d'invocation
+    initBuffersAndUniforms(); //Aprs gpu programs car fait aussi uniform
     initCamera();
     initImGui();
 }
@@ -792,13 +827,23 @@ void render() {
 int main(int argc, char ** argv) {
     init(); // Your initialization code (user interface, OpenGL states, scene with geometry, material, lights, etc)
 
+    GLuint swapBuff = 0;
     while(!glfwWindowShouldClose(g_window)) {
         //Phase de calculs :
-        //Bind les buffer du compute shader
+        //Bind les buffer du compute shader :
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, g_terrainLayersHeightVboR);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, g_terrainLayersHeightVboW);
         //Appelle au compute shader
-        //glUseProgram(g_computeProgram);
-        //glDispatchCompute(NUM_PARTICLES / WORK_GROUP_SIZE, 1, 1); //Changer pour avoir dimesion 2D de l'espace d'invocation
-        //glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+        glUseProgram(g_computeProgram);
+        glDispatchCompute(g_nbGroupsX, g_nbGroupsY, 1); //Changer pour avoir dimesion 2D de l'espace d'invocation x correspond à i et y à j
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+        //Swap les buffer R et W
+        swapBuff = g_terrainLayersHeightVboR;
+        g_terrainLayersHeightVboR = g_terrainLayersHeightVboW;
+        g_terrainLayersHeightVboW = swapBuff;
+
+        //Update les normales avec compute shader ?
 
         //Phase de rendering :
         glUseProgram(g_program);
