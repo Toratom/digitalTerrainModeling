@@ -837,6 +837,7 @@ int main(int argc, char ** argv) {
         glUseProgram(g_computeProgram);
         glDispatchCompute(g_nbGroupsX, g_nbGroupsY, 1); //Changer pour avoir dimesion 2D de l'espace d'invocation x correspond à i et y à j
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+        //std::cout << " X : " << g_nbGroupsX << " Y : " << g_nbGroupsY << std::endl;
 
         //Swap les buffer R et W
         swapBuff = g_terrainLayersHeightVboR;

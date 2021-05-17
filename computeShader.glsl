@@ -1,7 +1,7 @@
-#version 430 compatibility
+#version 430
 
-#extension GL_ARB_compute_shader : enable
-#extension GL_ARB_shader_storage_buffer_object : enable
+//#extension GL_ARB_compute_shader : enable
+//#extension GL_ARB_shader_storage_buffer_object : enable
 
 //Shader dans le cas terrain à 1 layer
 
@@ -10,11 +10,11 @@
 #define PATCH_WIDTH 32
 //ATTENTION doit etre coherent avec les defines dans main.cpp
 
-layout(std140, binding = 0) buffer ThickR {
+layout(std140, binding = 0) buffer readonly ThickR {
 	float ThicknessR[][NB_OF_LAYERS]; //Faire la même chose pour les water props, utiliser des arrays d'array
 };
 
-layout(std140, binding = 1) buffer ThickW {
+layout(std140, binding = 1) buffer volatile writeonly ThickW {
 	float ThicknessW[][NB_OF_LAYERS];
 };
 
