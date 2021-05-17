@@ -836,11 +836,11 @@ void renderImGui() {
 
     ImGui::Begin("Control Widget");
     ImGui::SetWindowSize(ImVec2(0, 0));
-    static float layer1_col = 0.0;
+    //static float layer1_col = 0.0;
     //ImGui::SliderFloat("Layer 1 color", &layer1_col, 0, 255.f);
-    static float layer2_col = 0.0;
+    //static float layer2_col = 0.0;
     //ImGui::SliderFloat("Layer 2 color", &layer2_col, 0, 255.f);
-    static float translation[] = {0.0, 0.0};
+    //static float translation[] = {0.0, 0.0};
     //ImGui::SliderFloat2("position", translation, -1.0, 1.0);
 
     ImGui::Separator();
@@ -856,8 +856,7 @@ void renderImGui() {
 
     ImGui::SliderFloat("Theta", &thetaLimit, 0, PI/2);
     ImGui::SliderFloat("Erosion coefficient", &erosionCoeff, 0, 1);
-    ImGui::SliderFloat("Dt", &dt, 0, 1); //Faudrait plutot 0.000001 à 0.1 genre juste les puissance de 10 si possible
-
+    ImGui::SliderFloat("Dt", &dt, 0.000001f, 0.1f, "%f", ImGuiSliderFlags_Logarithmic);
 
     if (ImGui::Button("Start thermal erosion")) {
         mesh->thermalErosion(thetaLimit, erosionCoeff, dt);
@@ -876,11 +875,15 @@ void renderImGui() {
     ImGui::Spacing();
 
     if (ImGui::TreeNode("Colors")) {
-        static float color[] = { 0.0, 0.0, 0.0 };
-        ImGui::ColorEdit3("Color", color);
+
+        static float color1[] = { 237.f / 255.f, 224.f / 255.f, 81.f / 255.f };
+        static float color0[] = { 120.f / 255.f, 135.f / 255.f, 124.f / 255.f };
+        ImGui::ColorEdit3("Color layer 1", color1);
+        ImGui::ColorEdit3("Color layer 0", color0);
         if (ImGui::Button("Update color")) {
             glfwSetWindowTitle(g_window, "Un projet incroyable");
-            mesh->setLayersColors(0, color);
+            mesh->setLayersColors(1, color1);
+            mesh->setLayersColors(0, color0);
             mesh->init();
         }
         ImGui::TreePop();
@@ -933,7 +936,7 @@ void initImGui() {
     ImGuiIO& io = ImGui::GetIO();
     // Setup Platform/Renderer bindings
     ImGui_ImplGlfw_InitForOpenGL(g_window, true);
-    ImGui_ImplOpenGL3_Init("#version 130");
+    ImGui_ImplOpenGL3_Init("#version 150");
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
 }
