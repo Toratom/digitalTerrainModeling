@@ -104,6 +104,7 @@ glm::vec3 g_baseRot(0.0);
 class Mesh {
 public:
     Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec3> layersColor, const glm::vec4& corners, const glm::vec2& e);
+    Mesh(const int nbOfLayers, const int width, const int height, const std::vector<glm::vec3> layersColor, const glm::vec4& corners, const glm::vec2& e);
 
     void init(); //Génère la surface à partir des différentes épaisseur de niveau, ces normales, puis envoie l'info au GPU
     void render();
@@ -142,7 +143,7 @@ private:
     GLuint m_normalVbo = 0;
     GLuint m_ibo = 0;
     GLuint m_colVbo = 0;
-    unsigned char* Mesh::createHeightMapFault(const int& width, const int& height);
+    unsigned char* Mesh::createHeightMapFault(const int& width, const int& height, const int& mode);
     unsigned char* loadHeightMapFromFile(const std::string& filename, int& width, int& height, int& channels);
 };
 
@@ -277,66 +278,81 @@ void Mesh::render() {
     glDrawElements(GL_TRIANGLES, m_triangleIndices.size(), GL_UNSIGNED_INT, 0); // Call for rendering: stream the current GPU geometry through the current GPU program
 }
 
-unsigned char* Mesh::createHeightMapFault(const int& width, const int& height) {
+unsigned char* Mesh::createHeightMapFault(const int& width, const int& height, const int& mode) {
 
     size_t map_size = width * height;
     unsigned char * heightMap = (unsigned char*) malloc(map_size);
-
-    /*for (int i = 0; i < map_size; i++) {
-        heightMap[i] = 0.f;
-        std::cout << heightMap[i] << std::endl;
-    }*/
 
     for (unsigned char * p = heightMap, *pg = heightMap; p != heightMap + map_size; p += 1, pg += 1) {
         *pg = (unsigned char) 0;
     }
 
-    std::cout << "eee" << heightMap[10] << std::endl;
-
     float d = sqrt(width * width + height * height);
-    float dy = 1;
+    float dy = 5.f;
+    int src_index;
+    float n_iter = (float) 5;
+    float dy0 = 0.1f;
+    float dyn = 1.f;
+    float v, a, b, c;
 
-    for (int k = 0; k < 300; k++) {
 
-        float v = rand();
-        /*if (k > 1) {
-            v = PI / 2.f;
+    for (int k = 0; k < n_iter; k++) {
+
+        v = rand();
+        a = cos(v);
+        b = sin(v);
+
+        c = (cos(rand()) / 2.f + 0.5f) * d - d / 2;
+        //std::cout << v << " c " << c << " d " << d << " " << a << " " << b << std::endl;
+
+        switch (mode) {
+            case 0:
+                dy = 5.f;
+                break;
+
+            case 1:
+                if (k < n_iter) {
+                    dy = dy0 + (k / n_iter) * (dyn / dy0);
+                }
+                else {
+                    dy = dyn;
+                }
+                break;
+
+            default:
+                dy = 5.f;
         }
-        else {
-            v = 0;
-        }*/
 
-        float a = cos(v);
-        float b = sin(v);
 
-        float c = (cos(rand()) / 2.f + 0.5f) * d - d / 2;
-        //c = 3.f;
-        std::cout << v << " c " << c << " d " << d << " " << a << " " << b << std::endl;
 
         for (int i = 0; i < height; i++) {
             for (int j = 0; j < width; j++) {
 
-                int src_index = j + width * i;
+                src_index = j + width * i;
+
+                dy = atan((float) (a * i + b * j - c))*10.f;
 
                 if (a * i + b * j > c) {
-                    heightMap[src_index] += (unsigned char) dy;
 
+                    if ((float) heightMap[src_index] < 256.f - dy) {
+                        heightMap[src_index] += (unsigned char) dy;
+                    }
                 }
+
                 else {
-                    heightMap[src_index] -= (unsigned char) dy;
+                    if ((float) heightMap[src_index] > dy) {
+                        heightMap[src_index] -= (unsigned char) dy;
+                    }
                 }
-
-                /*if (i > 1) {
-                    heightMap[src_index] = 120;
-                }*/
-
-                //std::cout << i << " " << j << " " << (float) heightMap[src_index] << " " << (a * i + b * j > c) << std::endl;
+                    //std::cout << dy << std::endl;
             }
+            //std::cout << i << " " << 0 << " " << (float) heightMap[src_index] << " " << (a * i > c) << std::endl;
         }
     }
 
     return heightMap;
 }
+
 
 
 unsigned char* Mesh::loadHeightMapFromFile(const std::string& filename, int& width, int& height, int& channels) {
@@ -401,7 +417,7 @@ Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec
             m_cellWidth = abs(m_gridBottomRightCorner.x - m_gridTopLeftCorner.x) / (width - 1.f);
             m_cellHeight = abs(m_gridBottomRightCorner.y - m_gridTopLeftCorner.y) / (height - 1.f);
 
-            std::cout << m_cellHeight << " " << m_cellHeight << std::endl;
+            //std::cout << m_cellHeight << " " << m_cellHeight << std::endl;
 
             m_layersThickness.resize(m_nbOfLayers * m_gridWidth * m_gridHeight);
             m_vertexPositions.resize(3 * m_gridWidth * m_gridHeight);
@@ -442,6 +458,70 @@ Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec
         for (int j = 0; j < width; j++) {
             m_vertexTexCoords.push_back(float(j) / (width - 1)); //x
             m_vertexTexCoords.push_back(float(i) / (height - 1)); //y
+        }
+    }
+}
+
+Mesh::Mesh(const int nbOfLayers, const int width, const int height, const std::vector<glm::vec3> layersColor, const glm::vec4& corners, const glm::vec2& e) {
+    m_nbOfLayers = nbOfLayers;
+    m_layersColor = layersColor;
+    m_gridTopLeftCorner = glm::vec2(corners.x, corners.y);
+    m_gridBottomRightCorner = glm::vec2(corners.z, corners.w);
+    float emin = e.x;
+    float emax = e.y;
+
+    for (unsigned int k = 0; k < m_nbOfLayers; k = k + 1) {
+        unsigned char* gray_img = createHeightMapFault(width, height, 1);
+
+        //Met a jour la taille de la grille avec la valeur de la première map
+        if (k == 0) {
+            m_gridWidth = width;
+            m_gridHeight = height;
+
+            m_cellWidth = abs(m_gridBottomRightCorner.x - m_gridTopLeftCorner.x) / (width - 1.f);
+            m_cellHeight = abs(m_gridBottomRightCorner.y - m_gridTopLeftCorner.y) / (height - 1.f);
+
+            //std::cout << m_cellHeight << " " << m_cellHeight << std::endl;
+
+            m_layersThickness.resize(m_nbOfLayers * m_gridWidth * m_gridHeight);
+            m_vertexPositions.resize(3 * m_gridWidth * m_gridHeight);
+            m_vertexNormals.resize(3 * m_gridWidth * m_gridHeight);
+            m_vertexColors.resize(3 * m_gridWidth * m_gridHeight);
+
+            for (int i = 0; i < m_gridWidth * m_gridHeight - m_gridWidth; i++) {
+                if (i % m_gridWidth != m_gridWidth - 1) {
+                    m_triangleIndices.push_back(i);
+                    m_triangleIndices.push_back(i + m_gridWidth);
+                    m_triangleIndices.push_back(i + 1);
+                    m_triangleIndices.push_back(i + 1);
+                    m_triangleIndices.push_back(i + m_gridWidth);
+                    m_triangleIndices.push_back(i + m_gridWidth + 1);
+                }
+            }
+        }
+
+        //Verfier que bonne dim
+        if (width != m_gridWidth || height != m_gridHeight) {
+            std::cout << "ERROR : wrong size" << std::endl;
+            break;
+        }
+
+        for (int i = 0; i < height; i++) {
+            for (int j = 0; j < width; j++) {
+                int src_index = j + width * i; //Image déroule ligne par ligne numComponents * j + numComponents * width< * i (au cas ou)
+                setLayerThickness(gray_img[src_index] / 255.f * (emax - emin) + emin, k, i, j);
+            }
+        }
+
+        free(gray_img);
+    }
+
+    //Pour les coordonnées des textures, on avance de 1/resolution pour remplir avec la texture entre 0 et 1
+    //m_vertexTexCoords = {};
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width; j++) {
+            m_vertexTexCoords.push_back(float(j)); //x
+            m_vertexTexCoords.push_back(float(i)); //y
         }
     }
 }
@@ -488,7 +568,7 @@ glm::uvec2 Mesh::getLowestNeighbor(unsigned int i, unsigned int j) const {
 
 float Mesh::getLayerThickness(unsigned int k, unsigned int i, unsigned int j) const {
     if (i < 0 || i >= m_gridHeight || j < 0 || j >= m_gridWidth) {
-        std::cout << "WARNING : You are loooking outside the grid" << std::endl;
+        //std::cout << "WARNING : You are loooking outside the grid" << std::endl;
         return 0;
     }
     return m_layersThickness[k * m_gridHeight * m_gridWidth + i * m_gridWidth + j];
@@ -780,8 +860,8 @@ void initOpenGL() {
     std::exit(EXIT_FAILURE);
   }
   
-  glCullFace(GL_BACK); // specifies the faces to cull (here the ones pointing away from the camera)
-  glEnable(GL_CULL_FACE); // enables face culling (based on the orientation defined by the cw/ccw enumeration).
+  //glCullFace(GL_BACK); // specifies the faces to cull (here the ones pointing away from the camera)
+  //glEnable(GL_CULL_FACE); // enables face culling (based on the orientation defined by the cw/ccw enumeration).
   glDepthFunc(GL_LESS);   // Specify the depth test for the z-buffer
   glEnable(GL_DEPTH_TEST);      // Enable the z-buffer test in the rasterization
   glClearColor(0.7f, 0.7f, 0.7f, 1.0f); // specify the background color, used any time the framebuffer is cleared
@@ -836,12 +916,6 @@ void renderImGui() {
 
     ImGui::Begin("Control Widget");
     ImGui::SetWindowSize(ImVec2(0, 0));
-    //static float layer1_col = 0.0;
-    //ImGui::SliderFloat("Layer 1 color", &layer1_col, 0, 255.f);
-    //static float layer2_col = 0.0;
-    //ImGui::SliderFloat("Layer 2 color", &layer2_col, 0, 255.f);
-    //static float translation[] = {0.0, 0.0};
-    //ImGui::SliderFloat2("position", translation, -1.0, 1.0);
 
     ImGui::Separator();
 
@@ -853,19 +927,39 @@ void renderImGui() {
     static float thetaLimit = 0.3;
     static float erosionCoeff = 0.3;
     static float dt = 0.0001;
-
-    ImGui::SliderFloat("Theta", &thetaLimit, 0, PI/2);
-    ImGui::SliderFloat("Erosion coefficient", &erosionCoeff, 0, 1);
-    ImGui::SliderFloat("Dt", &dt, 0.000001f, 0.1f, "%f", ImGuiSliderFlags_Logarithmic);
+    static int thermal_iter = 5;
 
     if (ImGui::Button("Start thermal erosion")) {
-        mesh->thermalErosion(thetaLimit, erosionCoeff, dt);
+        mesh->applyNThermalErosion(thermal_iter, thetaLimit, erosionCoeff, dt);
+    }
+
+    if (ImGui::TreeNode("Parameters")) {
+        ImGui::SliderFloat("Theta", &thetaLimit, 0, PI / 2);
+        ImGui::SliderFloat("Erosion coefficient", &erosionCoeff, 0, 1);
+        ImGui::SliderFloat("Dt", &dt, 0.000001f, 0.1f, "%f", ImGuiSliderFlags_Logarithmic);
+        ImGui::SliderInt("Number of iterations", &thermal_iter, 1, 1000);
+        ImGui::TreePop();
     }
 
     ImGui::Spacing();
 
-    if (ImGui::Button("Start hydraulique erosion")) {
-        mesh->thermalErosion(0.3, 0.3, 0.0001);
+    if (ImGui::Button("Start hydraulic erosion")) {}
+
+    if (ImGui::TreeNode("Parameters")) {
+        ImGui::SliderFloat("Theta", &thetaLimit, 0, PI / 2);
+        ImGui::SliderFloat("Erosion coefficient", &erosionCoeff, 0, 1);
+        ImGui::SliderFloat("Dt", &dt, 0.000001f, 0.1f, "%f", ImGuiSliderFlags_Logarithmic);
+        ImGui::SliderInt("Number of iterations", &thermal_iter, 1, 1000);
+        ImGui::TreePop();
+    }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    if (ImGui::Button("Fault Algorithm")) {
+        mesh = new Mesh(2, 100, 100, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 0.5f));
+        mesh->init();
     }
 
     ImGui::Spacing();
@@ -945,6 +1039,7 @@ void init() {
   initGLFW();
   initOpenGL();
   mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png" }, { glm::vec3(120.f/255.f, 135.f/255.f, 124.f/255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
+  //mesh = new Mesh(2, 100, 100, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.5f));
   initGPUprogram();
   //g_sunID = loadTextureFromFileToGPU("../data/heightmap3.jpg");
   mesh->init(); //gpu
