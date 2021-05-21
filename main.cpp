@@ -290,7 +290,7 @@ unsigned char* Mesh::createHeightMapFault(const int& width, const int& height, c
     float d = sqrt(width * width + height * height);
     float dy = 5.f;
     int src_index;
-    float n_iter = (float) 5;
+    float n_iter = (float) 100;
     float dy0 = 0.1f;
     float dyn = 1.f;
     float v, a, b, c;
@@ -934,6 +934,9 @@ void renderImGui() {
     }
 
     if (ImGui::TreeNode("Parameters")) {
+
+
+
         ImGui::SliderFloat("Theta", &thetaLimit, 0, PI / 2);
         ImGui::SliderFloat("Erosion coefficient", &erosionCoeff, 0, 1);
         ImGui::SliderFloat("Dt", &dt, 0.000001f, 0.1f, "%f", ImGuiSliderFlags_Logarithmic);
@@ -946,6 +949,83 @@ void renderImGui() {
     if (ImGui::Button("Start hydraulic erosion")) {}
 
     if (ImGui::TreeNode("Parameters")) {
+
+        ImGui::Spacing();
+        ImGui::Text("Erosion's strategy:");
+        ImGui::Spacing();
+
+        static int strategyErosion = 0;
+        if (ImGui::RadioButton("Strategy 1", &strategyErosion, 1)) {
+        }
+        ImGui::SameLine();
+
+        if (ImGui::RadioButton("Strategy 2", &strategyErosion, 0)) {
+        }
+
+        ImGui::Spacing();
+        ImGui::Text("Type of erosion:");
+        ImGui::Spacing();
+
+        static int typeErosion = 0;
+        if (ImGui::RadioButton("Sand", &typeErosion, 1)) {
+        }
+        ImGui::SameLine();
+
+        if (ImGui::RadioButton("Same", &typeErosion, 0)) {
+        }
+
+        ImGui::Spacing();
+        ImGui::Text("Connexity:");
+        ImGui::Spacing();
+
+        static int connexity = 0;
+        if (ImGui::RadioButton("8", &connexity, 1)) {
+        }
+        ImGui::SameLine();
+
+        if (ImGui::RadioButton("4", &connexity, 0)) {
+        }
+
+        ImGui::Spacing();
+        ImGui::Text("Descent's direction:");
+        ImGui::Spacing();
+
+        static int descentDirection = 0;
+        if (ImGui::RadioButton("Lowest neighbour", &descentDirection, 1)) {
+        }
+        ImGui::SameLine();
+
+        if (ImGui::RadioButton("Heighest gradient", &descentDirection, 0)) {
+        }
+
+        ImGui::Spacing();
+        ImGui::Text("Gradient's type:");
+        ImGui::Spacing();
+
+        static int typeGradient = 0;
+        if (ImGui::RadioButton("i+1 | i", &typeGradient, 2)) {
+        }
+        ImGui::SameLine();
+
+        if (ImGui::RadioButton("i | i+1", &typeGradient, 1)) {
+        }
+        ImGui::SameLine();
+
+        if (ImGui::RadioButton("i+1 | i-1", &typeGradient, 0)) {
+        }
+
+        ImGui::Spacing();
+        ImGui::Text("Matter's receiver:");
+        ImGui::Spacing();
+
+        static int neighbourReceiver = 0;
+        if (ImGui::RadioButton("With heighest gradient", &neighbourReceiver, 1)) {
+        }
+        ImGui::SameLine();
+
+        if (ImGui::RadioButton("All neighbours", &neighbourReceiver, 0)) {
+        }
+
         ImGui::SliderFloat("Theta", &thetaLimit, 0, PI / 2);
         ImGui::SliderFloat("Erosion coefficient", &erosionCoeff, 0, 1);
         ImGui::SliderFloat("Dt", &dt, 0.000001f, 0.1f, "%f", ImGuiSliderFlags_Logarithmic);
