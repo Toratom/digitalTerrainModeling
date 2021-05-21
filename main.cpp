@@ -30,6 +30,7 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
+#include <algorithm>
 #include <string>
 
 #define _USE_MATH_DEFINES
@@ -119,6 +120,7 @@ public:
     void setLayersColors(int layer, float color[]);
     void thermalErosion(float thetaLimit,float erosionCoeff,float dt);
     void applyNThermalErosion(unsigned int N, float thetaLimit, float erosionCoeff, float dt);
+    std::vector<glm::uvec2> getAllLowNeighbors(unsigned int i, unsigned int j) const;
 
 private:
     unsigned int m_gridWidth = 0; //Nb de colonnes de la grille de discretisation (image)
@@ -465,6 +467,8 @@ float Mesh::getLayerH(unsigned int k, unsigned int i, unsigned int j) const {
 }
 
 glm::uvec2 Mesh::getLowestNeighbor(unsigned int i, unsigned int j) const {
+    //Prend en compte le pixel central donc pas besoin de vérifier qu'on a bien un voisin plus bas que ce pixel central
+
     //Test en connexité 8
     int lowestDI = -1;
     int lowestDJ = -1;
@@ -484,6 +488,29 @@ glm::uvec2 Mesh::getLowestNeighbor(unsigned int i, unsigned int j) const {
     }
 
     return glm::uvec2(i, j) + glm::uvec2(lowestDI, lowestDJ);
+}
+
+std::vector<glm::uvec2> Mesh::getAllLowNeighbors(unsigned int i, unsigned int j) const {
+    //Test en connexité 8
+
+    float currentH = 0;
+    float hCenter = getH(i, j);
+    std::vector<glm::uvec2> vectorOfLowNeighbors;
+
+    for (int di = -1; di < 2; di += 1) {
+        for (int dj = -1; dj < 2; dj += 1) {
+            //on vérifie qu'on est pas sur le pixel central
+            if (di != 0 || dj != 0) {
+                currentH = getH(i + di, j + dj);
+                if (currentH < hCenter) {
+                    vectorOfLowNeighbors.push_back(glm::uvec2(i + di, j + dj));
+                }
+            }
+            
+        }
+    }
+    std::sort(vectorOfLowNeighbors.begin(), vectorOfLowNeighbors.end()); //trier en fonction de la hauteur avec une nouvelle liste ? ne veut rien dire le tri par index
+    return vectorOfLowNeighbors;
 }
 
 float Mesh::getLayerThickness(unsigned int k, unsigned int i, unsigned int j) const {
@@ -540,11 +567,15 @@ glm::vec2 Mesh::getGradient(unsigned int i, unsigned int j) const {
     return glm::vec2(getIDerivate(i, j), getJDerivate(i, j));
 }
 
+
+
+
 void Mesh::thermalErosion(float thetaLimit, float erosionCoeff, float dt) {
 
     float tangentLimit = glm::tan(thetaLimit);
     std::cout << m_gridWidth << " " << m_gridHeight << std::endl;
     std::vector<float> newLayersThickness = m_layersThickness;
+    bool spreadMatter = true;
 
     for (unsigned int i = 0; i < m_gridHeight; i++) {
         for (unsigned int j = 0; j < m_gridWidth; j++)
@@ -552,9 +583,9 @@ void Mesh::thermalErosion(float thetaLimit, float erosionCoeff, float dt) {
             glm::vec2 directionDescent = -getGradient(i, j);
             float slope = glm::length(directionDescent);
 
-            if (slope > 0) {
-                directionDescent = directionDescent / slope; //normalise la direction de descente
-            }
+            //if (slope > 0) {
+            //    directionDescent = directionDescent / slope; //normalise la direction de descente
+            //}
 
             //condition d'érosion
             if (slope > tangentLimit) {
@@ -590,8 +621,8 @@ void Mesh::thermalErosion(float thetaLimit, float erosionCoeff, float dt) {
 
                     //gérer les bords, on ne transfère la matière que sur des cellules à l'intérieur
                     if (nextI >= 0 && nextJ >= 0 && nextI < m_gridHeight && nextJ < m_gridWidth) {
-                        float newThicknessNextCell = getLayerThickness(layerIndexCurrentCell, nextI, nextJ) - dh;
-                        newLayersThickness[layerIndexCurrentCell * m_gridHeight * m_gridWidth + nextI * m_gridWidth + nextJ] = newThicknessNextCell;
+                        //float newThicknessNextCell = getLayerThickness(layerIndexCurrentCell, nextI, nextJ) - dh;
+                        newLayersThickness[layerIndexCurrentCell * m_gridHeight * m_gridWidth + nextI * m_gridWidth + nextJ] -= dh;
                     }
                 }
                 
