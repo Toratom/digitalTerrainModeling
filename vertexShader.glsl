@@ -17,5 +17,6 @@ void main() {
     fNormal = transpose(inverse(mat3(modelMat)))*vNormal;
     fPos = vec3(modelMat*vec4(vPosition,1.0));
     fColor = vColor;
+    //fColor = fNormal;
     //fTexCoord = vTexCoord;
 }

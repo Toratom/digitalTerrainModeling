@@ -107,6 +107,7 @@ public:
 
     void init(); //Génère la surface à partir des différentes épaisseur de niveau, ces normales, puis envoie l'info au GPU
     void render();
+    unsigned int getIndex(unsigned int k, unsigned int i, unsigned int j);
     float getH(unsigned int i, unsigned int j) const; //Pour avoir la hauteur issue des différentes epaisseurs des layers au point (i,j) de la grille
     float getLayerThickness(unsigned int k, unsigned int i, unsigned int j) const;
     float getLayerH(unsigned int k, unsigned int i, unsigned int j) const;
@@ -117,7 +118,8 @@ public:
     float getJDerivate(unsigned int i, unsigned int j) const; //Derive par rapport à j (X)
     glm::vec2 getGradient(unsigned int i, unsigned int j) const;
     void setLayersColors(int layer, float color[]);
-    void thermalErosion(float thetaLimit,float erosionCoeff,float dt);
+    void thermalErosionA(float thetaLimit,float erosionCoeff,float dt);
+    void thermalErosionB(float thetaLimit, float erosionCoeff, float dt, bool connexity8);
     void applyNThermalErosion(unsigned int N, float thetaLimit, float erosionCoeff, float dt);
 
 private:
@@ -164,18 +166,12 @@ void Mesh::init() {
             grad = getGradient(i, j);
             normal = glm::normalize(glm::vec3(-grad.y, 1, -grad.x)); //On fait attention bien mettre dans bon ordre i.e. derive par rapport à x, correspond à derive par rapport à j...
             color = m_layersColor[getTopLayerId(i, j)];
-            //if (i == 26 && j == 34) {
-            //    color = glm::vec3(1.f, 0.f, 0.f);
-            //}
-            //if (i == 26 && j == 35) {
-            //    color = glm::vec3(0.f, 0.f, 1.f);
-            //}
-            //if (i == 27 && j == 35) {
-            //    color = glm::vec3(0.f, 1.f, 0.f);
-            //}
-            //if (i == 50 || j == 50) {
-            //    color = glm::vec3(1.f, 0.f, 0.f);
-            //}
+            //glm::vec2 gradN = (grad.x >0 && grad.y > 0) ? glm::normalize(grad) : grad;
+            //color.x = 1 / 2.f * (gradN.x + 1);
+            //color.y = 1 / 2.f * (gradN.y + 1);
+            //color.z = 1 / 2.f;
+            //color = glm::vec3(0.5, 0.5, 0.5);
+            //color = m_layersColor[getTopLayerId(i, j)];
 
             m_vertexPositions[ind] = (ax + (bx - ax) * j / (m_gridWidth - 1)); //x
             m_vertexNormals[ind] = normal.x;
@@ -456,6 +452,10 @@ unsigned int Mesh::getTopLayerId(unsigned int i, unsigned int j) const {
     return id;
 }
 
+unsigned int Mesh::getIndex(unsigned int k, unsigned int i, unsigned int j) {
+    return k * m_gridHeight * m_gridWidth + i * m_gridWidth + j;
+}
+
 float Mesh::getLayerH(unsigned int k, unsigned int i, unsigned int j) const {
     float h = 0;
     for (unsigned int l = 0; l <= k; l = l + 1) {
@@ -487,10 +487,12 @@ glm::uvec2 Mesh::getLowestNeighbor(unsigned int i, unsigned int j) const {
 }
 
 float Mesh::getLayerThickness(unsigned int k, unsigned int i, unsigned int j) const {
-    if (i < 0 || i >= m_gridHeight || j < 0 || j >= m_gridWidth) {
-        std::cout << "WARNING : You are loooking outside the grid" << std::endl;
-        return 0;
-    }
+    //Clamp (i, j) si en dehors de la grille
+    if (i < 0) i = 0;
+    if (i >= m_gridHeight) i = m_gridHeight - 1;
+    if (j < 0) j = 0;
+    if (j >= m_gridWidth) j = m_gridWidth - 1;
+
     return m_layersThickness[k * m_gridHeight * m_gridWidth + i * m_gridWidth + j];
 }
 
@@ -519,7 +521,7 @@ float Mesh::getIDerivate(unsigned int i, unsigned int j) const {
         return (getH(i, j) - getH(i - 1, j)) / m_cellHeight;
     }
     
-    //return (getH(i + 1, j) - getH(i, j)) / m_cellHeight;
+    //return (getH(i, j) - getH(i - 1, j)) / m_cellHeight;
     return (getH(i + 1, j) - getH(i - 1, j)) / (2.f * m_cellHeight);
 }
 
@@ -532,7 +534,7 @@ float Mesh::getJDerivate(unsigned int i, unsigned int j) const {
         return (getH(i, j) - getH(i, j - 1)) / m_cellWidth;
     }
 
-    //return (getH(i, j + 1) - getH(i, j)) / m_cellWidth;
+    //return (getH(i, j) - getH(i, j - 1)) / m_cellWidth;
     return (getH(i, j + 1) - getH(i, j - 1)) / (2.f * m_cellWidth);
 }
 
@@ -540,8 +542,7 @@ glm::vec2 Mesh::getGradient(unsigned int i, unsigned int j) const {
     return glm::vec2(getIDerivate(i, j), getJDerivate(i, j));
 }
 
-void Mesh::thermalErosion(float thetaLimit, float erosionCoeff, float dt) {
-
+void Mesh::thermalErosionA(float thetaLimit, float erosionCoeff, float dt) {
     float tangentLimit = glm::tan(thetaLimit);
     std::cout << m_gridWidth << " " << m_gridHeight << std::endl;
     std::vector<float> newLayersThickness = m_layersThickness;
@@ -590,8 +591,8 @@ void Mesh::thermalErosion(float thetaLimit, float erosionCoeff, float dt) {
 
                     //gérer les bords, on ne transfère la matière que sur des cellules à l'intérieur
                     if (nextI >= 0 && nextJ >= 0 && nextI < m_gridHeight && nextJ < m_gridWidth) {
-                        float newThicknessNextCell = getLayerThickness(layerIndexCurrentCell, nextI, nextJ) - dh;
-                        newLayersThickness[layerIndexCurrentCell * m_gridHeight * m_gridWidth + nextI * m_gridWidth + nextJ] = newThicknessNextCell;
+                        //float newThicknessNextCell = getLayerThickness(layerIndexCurrentCell, nextI, nextJ) - dh;
+                        newLayersThickness[layerIndexCurrentCell * m_gridHeight * m_gridWidth + nextI * m_gridWidth + nextJ] -= dh;
                     }
                 }
                 
@@ -605,10 +606,88 @@ void Mesh::thermalErosion(float thetaLimit, float erosionCoeff, float dt) {
     mesh->init();
 }
 
-void Mesh::applyNThermalErosion(unsigned int N, float thetaLimit, float erosionCoeff, float dt) {
-    for (unsigned int i = 0; i < N; i += 1) {
-        thermalErosion(thetaLimit, erosionCoeff, dt);
+void Mesh::thermalErosionB(float thetaLimit, float erosionCoeff, float dt, bool connexity8 = true) {
+    int topLayerIndexCurrentCell = 0.f;
+    std::vector<float> dHOut; //8 connexite (i-1, j-1) ; (i-1, j) ; (i-1, j+1) ; (i, j-1) ; (i, j+1) ; (i+1, j-1) ; (i+1, j) ; (i+1, j+1) ;
+    float dHOutTot = 0.f;
+    std::vector<glm::ivec2> neighborTranslations; //translation forme (dI, dJ)
+
+    //En fonction de la connexite change la liste des deplacements pour trouver les voisins
+    if (connexity8) {
+        dHOut.resize(8);
+        neighborTranslations.resize(8);
+        neighborTranslations[0] = glm::vec2(-1, -1);
+        neighborTranslations[1] = glm::vec2(-1 , 0);
+        neighborTranslations[2] = glm::vec2(-1, 1);
+        neighborTranslations[3] = glm::vec2(0, -1);
+        neighborTranslations[4] = glm::vec2(0, 1);
+        neighborTranslations[5] = glm::vec2(1, -1);
+        neighborTranslations[6] = glm::vec2(1, 0);
+        neighborTranslations[7] = glm::vec2(1, 1);
     }
+    else {
+        dHOut.resize(4);
+        neighborTranslations.resize(4);
+        neighborTranslations[0] = glm::vec2(-1, 0);
+        neighborTranslations[1] = glm::vec2(0, -1);
+        neighborTranslations[2] = glm::vec2(0, 1);
+        neighborTranslations[3] = glm::vec2(1, 0);
+    }
+    
+    float K = 1.f; //Coeff de normalisation si le dHOut superieure à H
+    int nextCellI = 0;
+    int nextCellJ = 0;
+    float elevationLimit = glm::tan(thetaLimit);
+    std::vector<float> newLayersThickness = m_layersThickness;
+
+    for (unsigned int i = 0; i < m_gridHeight; i++) {
+        for (unsigned int j = 0; j < m_gridWidth; j++)
+        {
+            topLayerIndexCurrentCell = getTopLayerId(i, j);
+
+            if (topLayerIndexCurrentCell > 0) { //Erosion il y a que si la roche afleurente n'est pas de la bedrock
+                //On calcule les dH
+                dHOutTot = 0.f;
+                for (unsigned int k = 0; k < neighborTranslations.size(); k ++) {
+                    nextCellI = i + neighborTranslations[k].x;
+                    nextCellJ = j + neighborTranslations[k].y;
+                    dHOut[k] = std::max(0.f, erosionCoeff * ((getH(i, j) - getH(nextCellI, nextCellJ)) / m_cellHeight - elevationLimit) * dt);
+                    dHOutTot += dHOut[k];
+                }
+
+                //Calcule du coeff de normalisation K, pour eviter de perdre plus de matiere que la colonne courante du layer affleurant
+                K = std::min(1.f, getLayerThickness(topLayerIndexCurrentCell, i, j) / dHOutTot);
+
+                //Maj les dHOut
+                dHOutTot = 0.f;
+                for (unsigned int k = 0; k < neighborTranslations.size(); k++) {
+                    dHOut[k] *= K;
+                    dHOutTot += dHOut[k];
+                }
+
+                //Maj des epaisseurs dans la liste intermediaire
+                //De la cellule courante on enlève de la matière
+                newLayersThickness[getIndex(topLayerIndexCurrentCell, i, j)] -= dHOutTot;
+                //Des cellule voisine il faut tester si on ne sort pas de la grille, on ajoute de la matière
+                for (unsigned int k = 0; k < neighborTranslations.size(); k++) {
+                    nextCellI = i + neighborTranslations[k].x;
+                    nextCellJ = j + neighborTranslations[k].y;
+                    if (nextCellI >= 0 && nextCellJ >= 0 && nextCellI < m_gridHeight && nextCellJ < m_gridWidth) {
+                        newLayersThickness[getIndex(topLayerIndexCurrentCell, nextCellI, nextCellJ)] += dHOut[k];
+                    }
+                }
+            }
+        }
+    }
+
+    m_layersThickness = newLayersThickness;
+    mesh->init();
+}
+
+void Mesh::applyNThermalErosion(unsigned int N, float thetaLimit, float erosionCoeff, float dt) {
+    //for (unsigned int i = 0; i < N; i += 1) {
+    //    thermalErosion(thetaLimit, erosionCoeff, dt);
+    //}
 }
 
 
@@ -852,20 +931,20 @@ void renderImGui() {
 
     static float thetaLimit = 0.3;
     static float erosionCoeff = 0.3;
-    static float dt = 0.0001;
+    static float dt = 0.0500;
 
     ImGui::SliderFloat("Theta", &thetaLimit, 0, PI/2);
     ImGui::SliderFloat("Erosion coefficient", &erosionCoeff, 0, 1);
     ImGui::SliderFloat("Dt", &dt, 0.000001f, 0.1f, "%f", ImGuiSliderFlags_Logarithmic);
 
     if (ImGui::Button("Start thermal erosion")) {
-        mesh->thermalErosion(thetaLimit, erosionCoeff, dt);
+        mesh->thermalErosionB(thetaLimit, erosionCoeff, dt);
     }
 
     ImGui::Spacing();
 
     if (ImGui::Button("Start hydraulique erosion")) {
-        mesh->thermalErosion(0.3, 0.3, 0.0001);
+        mesh->thermalErosionB(0.3, 0.3, 0.0001);
     }
 
     ImGui::Spacing();
@@ -944,7 +1023,7 @@ void initImGui() {
 void init() {
   initGLFW();
   initOpenGL();
-  mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png" }, { glm::vec3(120.f/255.f, 135.f/255.f, 124.f/255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
+  mesh = new Mesh({ "../data/simpleB.png", "../data/simpleStr.png" }, { glm::vec3(120.f/255.f, 135.f/255.f, 124.f/255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
   initGPUprogram();
   //g_sunID = loadTextureFromFileToGPU("../data/heightmap3.jpg");
   mesh->init(); //gpu
