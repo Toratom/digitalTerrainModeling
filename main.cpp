@@ -668,70 +668,66 @@ void Mesh::thermalErosionA(float thetaLimit, float erosionCoeff, float dt, bool 
     float tangentLimit = glm::tan(thetaLimit);
     std::vector<float> newLayersThickness = m_layersThickness; //vecteur mémoire temporaire
 
-    //Si on donne la matière au voisin dans la direction de descente
-    if (neighbourReceiver == 1) {
 
-        for (unsigned int i = 0; i < m_gridHeight; i++) {
-            for (unsigned int j = 0; j < m_gridWidth; j++)
-            {
-                glm::vec2 directionDescent = -getGradient(i, j);
-                float slope = glm::length(directionDescent);
+    for (unsigned int i = 0; i < m_gridHeight; i++) {
+        for (unsigned int j = 0; j < m_gridWidth; j++)
+        {
+            glm::vec2 directionDescent = -getGradient(i, j);
+            float slope = glm::length(directionDescent);
 
-                //if (slope > 0) {directionDescent = directionDescent / slope;} //normalise la direction de descente
+            //if (slope > 0) {directionDescent = directionDescent / slope;} //normalise la direction de descente
 
-                //condition d'érosion
-                if (slope > tangentLimit) {
-                    int layerIndexCurrentCell = getTopLayerId(i, j);
+            //condition d'érosion
+            if (slope > tangentLimit) {
+                int layerIndexCurrentCell = getTopLayerId(i, j);
 
-                    float dh = -erosionCoeff * (slope - tangentLimit) * dt; // ? Pb dh peut-être plus grand que l'epaisseur du layer
-                    if (-dh > getLayerThickness(layerIndexCurrentCell, i, j)) {
-                        dh = -getLayerThickness(layerIndexCurrentCell, i, j);
+                float dh = -erosionCoeff * (slope - tangentLimit) * dt; // ? Pb dh peut-être plus grand que l'epaisseur du layer
+                if (-dh > getLayerThickness(layerIndexCurrentCell, i, j)) {
+                    dh = -getLayerThickness(layerIndexCurrentCell, i, j);
+                }
+
+                //on erode si on est pas le layer le plus bas
+                if (layerIndexCurrentCell > 0) {
+
+                    float newThicknessCurrentCell = getLayerThickness(layerIndexCurrentCell, i, j) + dh;
+
+                    newLayersThickness[layerIndexCurrentCell * m_gridHeight * m_gridWidth + i * m_gridWidth + j] = (newThicknessCurrentCell > 0) ? newThicknessCurrentCell : 0.f;
+
+                    //On va maintenant rajouter de la matière sur la cellule dans la direction de plus forte descente
+
+                    //On done le layer au voisin dans la direction de descente : peut poser pb 
+                    //glm::vec2 nextCell = glm::vec2(i, j) + directionDescent; 
+                    //int nextI = round(nextCell.x);//pour obtenir la cellule i,j dans laquelle on atterit
+                    //int nextJ = round(nextCell.y);
+
+                    //On donne le layer au voisin le plus bas
+                    glm::uvec2 nextCell = getLowestNeighbor(i, j); 
+                    unsigned int nextI = nextCell.x;//pour obtenir la cellule i,j dans laquelle on atterit
+                    unsigned int nextJ = nextCell.y;
+
+                    //Etude du cas (26, 34) de qui il recoit de la matiere (i == 26 && j == 34) || (i == 27 && j == 34) || (i == 26 && j == 33) || (i == 26 && j == 35) || (i == 27 && j == 35)
+                    //if ((i == 61 && j == 62) || (i == 36 && j == 37)) {
+                    //    if (getH(nextI, nextJ) > getH(i, j)) {
+                    //        std::cout << "PB ";
+                    //    }
+                    //    std::cout << "i "<< i << " j " << j << " Dir - grad " << directionDescent.x << " " << directionDescent.y << -dh << " nextI " << nextI << " NextJ " << nextJ << std::endl;
+                    //}
+
+                    //gérer les bords, on ne transfère la matière que sur des cellules à l'intérieur
+                    if (nextI >= 0 && nextJ >= 0 && nextI < m_gridHeight && nextJ < m_gridWidth) {
+                        //float newThicknessNextCell = getLayerThickness(layerIndexCurrentCell, nextI, nextJ) - dh;
+                        newLayersThickness[layerIndexCurrentCell * m_gridHeight * m_gridWidth + nextI * m_gridWidth + nextJ] -= dh;
                     }
-
-                    //on erode si on est pas le layer le plus bas
-                    if (layerIndexCurrentCell > 0) {
-
-                        float newThicknessCurrentCell = getLayerThickness(layerIndexCurrentCell, i, j) + dh;
-
-                        newLayersThickness[layerIndexCurrentCell * m_gridHeight * m_gridWidth + i * m_gridWidth + j] = (newThicknessCurrentCell > 0) ? newThicknessCurrentCell : 0.f;
-
-                        //On va maintenant rajouter de la matière sur la cellule dans la direction de plus forte descente
-                        //glm::vec2 nextCell = glm::vec2(i, j) + directionDescent; // ? Pose pb ? Essayer prendre la cellule voisine la plus basse
-                        //int nextI = round(nextCell.x);//pour obtenir la cellule i,j dans laquelle on atterit
-                        //int nextJ = round(nextCell.y);
-                        glm::uvec2 nextCell = getLowestNeighbor(i, j); // ? Pose pb ? Essayer prendre la cellule voisine la plus basse
-                        unsigned int nextI = nextCell.x;//pour obtenir la cellule i,j dans laquelle on atterit
-                        unsigned int nextJ = nextCell.y;
-
-                        //Etude du cas (26, 34) de qui il recoit de la matiere (i == 26 && j == 34) || (i == 27 && j == 34) || (i == 26 && j == 33) || (i == 26 && j == 35) || (i == 27 && j == 35)
-                        //if ((i == 61 && j == 62) || (i == 36 && j == 37)) {
-                        //    if (getH(nextI, nextJ) > getH(i, j)) {
-                        //        std::cout << "PB ";
-                        //    }
-                        //    std::cout << "i "<< i << " j " << j << " Dir - grad " << directionDescent.x << " " << directionDescent.y << -dh << " nextI " << nextI << " NextJ " << nextJ << std::endl;
-                        //}
-
-                        //gérer les bords, on ne transfère la matière que sur des cellules à l'intérieur
-                        if (nextI >= 0 && nextJ >= 0 && nextI < m_gridHeight && nextJ < m_gridWidth) {
-                            //float newThicknessNextCell = getLayerThickness(layerIndexCurrentCell, nextI, nextJ) - dh;
-                            newLayersThickness[layerIndexCurrentCell * m_gridHeight * m_gridWidth + nextI * m_gridWidth + nextJ] -= dh;
-                        }
-                    }
-
                 }
 
             }
+
         }
-
-        m_layersThickness = newLayersThickness;
-
-        mesh->init();
     }
 
-    //Si on donne de la matière à tous les voisins plus bas que la cellule centrale
-    else {
+    m_layersThickness = newLayersThickness;
 
-    }
+    mesh->init();
 
     
 }
