@@ -763,6 +763,7 @@ void Mesh::thermalErosionB(float thetaLimit, float erosionCoeff, float dt, bool 
     float K = 1.f; //Coeff de normalisation si le dHOut superieure à H
     int nextCellI = 0;
     int nextCellJ = 0;
+    float distanceToNextCell = 0.f;
     float elevationLimit = glm::tan(thetaLimit);
     std::vector<float> newLayersThickness = m_layersThickness;
 
@@ -777,7 +778,8 @@ void Mesh::thermalErosionB(float thetaLimit, float erosionCoeff, float dt, bool 
                 for (unsigned int k = 0; k < neighborTranslations.size(); k ++) {
                     nextCellI = i + neighborTranslations[k].x;
                     nextCellJ = j + neighborTranslations[k].y;
-                    dHOut[k] = std::max(0.f, erosionCoeff * ((getH(i, j) - getH(nextCellI, nextCellJ)) / m_cellHeight - elevationLimit) * dt);
+                    distanceToNextCell = sqrt(pow(m_cellHeight * neighborTranslations[k].x, 2) + pow(m_cellWidth * neighborTranslations[k].y, 2));
+                    dHOut[k] = std::max(0.f, erosionCoeff * ((getH(i, j) - getH(nextCellI, nextCellJ)) / distanceToNextCell - elevationLimit) * dt);
                     dHOutTot += dHOut[k];
                 }
 
@@ -1243,7 +1245,7 @@ void initImGui() {
 void init() {
   initGLFW();
   initOpenGL();
-  mesh = new Mesh({ "../data/simpleB.png", "../data/simpleStr.png" }, { glm::vec3(120.f/255.f, 135.f/255.f, 124.f/255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
+  mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png" }, { glm::vec3(120.f/255.f, 135.f/255.f, 124.f/255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
   //mesh = new Mesh(2, 100, 100, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.5f));
   initGPUprogram();
   //g_sunID = loadTextureFromFileToGPU("../data/heightmap3.jpg");
