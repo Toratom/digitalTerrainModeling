@@ -14,7 +14,7 @@ layout(std140, binding = 0) buffer readonly ThickR {
 	float ThicknessR[][NB_OF_LAYERS]; //Faire la même chose pour les water props, utiliser des arrays d'array
 };
 
-layout(std140, binding = 1) buffer volatile writeonly ThickW {
+layout(std140, binding = 1) buffer writeonly ThickW {
 	float ThicknessW[][NB_OF_LAYERS];
 };
 
@@ -68,10 +68,6 @@ void main() {
 
 		//ThicknessW[getIndex(i, j)][0] = newH;
 
-		//ThicknessW[getIndex(i, j)][0] = getHeight(i, j)/5.0;
-	}
-
-	for (int k = 0; k < (gridHeight * gridWidth)/2; k += 1) {
-		ThicknessW[k][0] = 10;
+		ThicknessW[getIndex(i, j)][0] = getHeight(i, j)/1.5;
 	}
 }

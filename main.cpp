@@ -36,6 +36,8 @@
 #include <cmath>
 #include <memory>
 
+#include <Windows.h> 
+
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
@@ -509,19 +511,85 @@ void initGLFW() {
   glfwSwapInterval(1); // Enable vsync
 }
 
+void openglCallbackFunction(GLenum source,
+    GLenum type,
+    GLuint id,
+    GLenum severity,
+    GLsizei length,
+    const GLchar* message,
+    const void* userParam) {
+
+    if (id == 131185) {
+        return;
+    }
+
+    std::cout << "---------------------opengl-callback-start------------" << std::endl;
+    std::cout << "message: " << message << std::endl;
+    std::cout << "type: ";
+    switch (type) {
+    case GL_DEBUG_TYPE_ERROR:
+        std::cout << "ERROR";
+        break;
+    case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR:
+        std::cout << "DEPRECATED_BEHAVIOR";
+        break;
+    case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR:
+        std::cout << "UNDEFINED_BEHAVIOR";
+        break;
+    case GL_DEBUG_TYPE_PORTABILITY:
+        std::cout << "PORTABILITY";
+        break;
+    case GL_DEBUG_TYPE_PERFORMANCE:
+        std::cout << "PERFORMANCE";
+        break;
+    case GL_DEBUG_TYPE_OTHER:
+        std::cout << "OTHER";
+        break;
+    }
+    std::cout << std::endl;
+
+    std::cout << "id: " << id << std::endl;
+    std::cout << "severity: ";
+    switch (severity) {
+    case GL_DEBUG_SEVERITY_LOW:
+        std::cout << "LOW";
+        break;
+    case GL_DEBUG_SEVERITY_MEDIUM:
+        std::cout << "MEDIUM";
+        break;
+    case GL_DEBUG_SEVERITY_HIGH:
+        std::cout << "HIGH";
+        break;
+    }
+    std::cout << std::endl;
+    if (type != GL_DEBUG_TYPE_OTHER && id != 131218) {
+        std::cout << "break point..." << std::endl;
+        exit(1);
+    }
+    std::cout << "---------------------opengl-callback-end--------------" << std::endl;
+}
+
 void initOpenGL() {
-  // Load extensions for modern OpenGL
-  if(!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
+    // Load extensions for modern OpenGL
+    if(!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
     std::cerr << "ERROR: Failed to initialize OpenGL context" << std::endl;
     glfwTerminate();
     std::exit(EXIT_FAILURE);
-  }
+    }
   
-  glCullFace(GL_BACK); // specifies the faces to cull (here the ones pointing away from the camera)
-  glEnable(GL_CULL_FACE); // enables face culling (based on the orientation defined by the cw/ccw enumeration).
-  glDepthFunc(GL_LESS);   // Specify the depth test for the z-buffer
-  glEnable(GL_DEPTH_TEST);      // Enable the z-buffer test in the rasterization
-  glClearColor(0.7f, 0.7f, 0.7f, 1.0f); // specify the background color, used any time the framebuffer is cleared
+    //Pour debug
+    glEnable(GL_DEBUG_OUTPUT);
+    glDebugMessageCallback(openglCallbackFunction, nullptr);
+    GLuint unusedIds = 0;
+    glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, &unusedIds, true);
+
+    glCullFace(GL_BACK); // specifies the faces to cull (here the ones pointing away from the camera)
+    glEnable(GL_CULL_FACE); // enables face culling (based on the orientation defined by the cw/ccw enumeration).
+    glDepthFunc(GL_LESS);   // Specify the depth test for the z-buffer
+    glEnable(GL_DEPTH_TEST);      // Enable the z-buffer test in the rasterization
+    glClearColor(0.7f, 0.7f, 0.7f, 1.0f); // specify the background color, used any time the framebuffer is cleared
+
+    std::cout << "---INIT OPENGL DONE---" << std::endl;
 }
 
 // Loads the content of an ASCII file in a standard C++ string
@@ -638,12 +706,25 @@ void initGPUprograms() {
     //Calcul des dims de l'espace d'invocation
     g_nbGroupsX = (mesh->getGridHeight() + PATCH_HEIGHT - 1) / PATCH_HEIGHT;
     g_nbGroupsY = (mesh->getGridWidth() + PATCH_WIDTH - 1) / PATCH_WIDTH;
+
+    std::cout << "---INIT GPU PROGRAMS DONE---" << std::endl;
 }
 
 void initBuffersAndUniforms() {
     //Uniforms
-    glUniform1ui(glGetUniformLocation(g_computeProgram, "gridHeight"), mesh->getGridHeight());
-    glUniform1ui(glGetUniformLocation(g_computeProgram, "gridWidth"), mesh->getGridWidth());
+    glUseProgram(g_computeProgram); //Il faut "bind" le program afin de pouvoir set des variables uniforme avec glUniform...
+    GLint loc = glGetUniformLocation(g_computeProgram, "gridHeight");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM gridHeight" << std::endl;
+    glUniform1ui(loc, mesh->getGridHeight());
+    //glUniform1i(loc, 100);
+    loc = glGetUniformLocation(g_computeProgram, "gridWidth");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM gridWidth" << std::endl;
+    //glUniform1i(loc, 100);
+    glUniform1ui(loc, mesh->getGridWidth());
+    glUseProgram(0);
+
+    std::cout << "---INIT UNIFORMS DONE---" << std::endl;
+
 
     //Buffers :
     std::vector<float> gridPosTmp;
@@ -689,6 +770,8 @@ void initBuffersAndUniforms() {
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    std::cout << "---INIT BUFFERS DONE---" << std::endl;
 }
 
 void initCamera() {
@@ -699,6 +782,8 @@ void initCamera() {
   g_camera.setPosition(glm::vec3(0.0, 0.0, 10.0));
   g_camera.setNear(0.1);
   g_camera.setFar(20.0);
+
+  std::cout << "---INIT CAMERA DONE---" << std::endl;
 }
 
 void render();
@@ -785,6 +870,8 @@ void initImGui() {
     ImGui_ImplOpenGL3_Init("#version 130");
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
+
+    std::cout << "---INIT IMGUI DONE---" << std::endl;
 }
 
 void init() {
@@ -830,12 +917,12 @@ int main(int argc, char ** argv) {
     GLuint swapBuff = 0;
     while(!glfwWindowShouldClose(g_window)) {
         //Phase de calculs :
+        glUseProgram(g_computeProgram);
         //Bind les buffer du compute shader :
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, g_terrainLayersHeightVboR);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, g_terrainLayersHeightVboW);
         //Appelle au compute shader
-        glUseProgram(g_computeProgram);
-        glDispatchCompute(g_nbGroupsX, g_nbGroupsY, 1); //Changer pour avoir dimesion 2D de l'espace d'invocation x correspond à i et y à j
+        glDispatchCompute(g_nbGroupsX, g_nbGroupsY, 1); //Dimension 2D de l'espace d'invocation x correspond à i et y à j
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
         //std::cout << " X : " << g_nbGroupsX << " Y : " << g_nbGroupsY << std::endl;
 
@@ -843,6 +930,8 @@ int main(int argc, char ** argv) {
         swapBuff = g_terrainLayersHeightVboR;
         g_terrainLayersHeightVboR = g_terrainLayersHeightVboW;
         g_terrainLayersHeightVboW = swapBuff;
+        std::cout << "R " << g_terrainLayersHeightVboR << std::endl;
+        std::cout << "W " << g_terrainLayersHeightVboW << std::endl;
 
         //Update les normales avec compute shader ?
 
@@ -853,6 +942,8 @@ int main(int argc, char ** argv) {
 
         glfwSwapBuffers(g_window);
         glfwPollEvents();
+
+        Sleep(250);
     }
 
     // Cleanup
