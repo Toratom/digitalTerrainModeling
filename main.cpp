@@ -772,23 +772,24 @@ void Mesh::thermalErosionA(float thetaLimit, float erosionCoeff, float dt, bool 
                     }
 
                     //On distribue la matière dans tous les voisins, plus un voisin est bas plus reçoit de matière
-                    //ici, le voisin i de hauteur hi reçoit dh*hi/(somme de h_i)
+                    //ici, le voisin i de hauteur hi reçoit -dh*(hi-h_j)/(somme de h_i - h_j) (>=0)
+                    //ainsi, plus la différence de niveau est grande, plus le voisin reçoit de la matière.
                     else {
                         //std::cout << "Tous les voisins inférieurs reçoivent la matière" << std::endl;
 
                         std::vector<glm::uvec2> vectorOfLowNeighbors = getAllLowNeighbors(i, j, connexity8);
                         unsigned int nextI;
                         unsigned int nextJ;
-                        float sumOfH = 0;
+                        float sumOfDifferences = 0;
 
-                        //calcul de somme des h_i
+                        //calcul de somme des h_i-h_j
                         for (unsigned int i = 0; i < vectorOfLowNeighbors.size(); i++)
                         {
 
                             glm::uvec2 nextCell = vectorOfLowNeighbors.at(i);
                             nextI = nextCell.x; //pour obtenir la cellule i,j dans laquelle on atterit
                             nextJ = nextCell.y;
-                            sumOfH += getH(nextI, nextJ);
+                            sumOfDifferences += getH(i,j)-getH(nextI, nextJ);
                         }
 
 
@@ -799,13 +800,13 @@ void Mesh::thermalErosionA(float thetaLimit, float erosionCoeff, float dt, bool 
                             nextI = nextCell.x; //pour obtenir la cellule i,j dans laquelle on atterit
                             nextJ = nextCell.y;
                             
-                            if (sumOfH > 0) {
+                            if (sumOfDifferences > 0) {
                                 //nextI et nextJ respectent déjà les conditions au bord (cf la fonction getAllLowNeighbors)
-                                newLayersThickness[newLayerIndex * m_gridHeight * m_gridWidth + nextI * m_gridWidth + nextJ] -= dh * getH(nextI, nextJ) / sumOfH;
+                                newLayersThickness[newLayerIndex * m_gridHeight * m_gridWidth + nextI * m_gridWidth + nextJ] -= dh * (getH(i,j)-getH(nextI, nextJ)) / sumOfDifferences;
                             }
-                            //sumOfH vaut 0 si tous les voisins on une haute nulle ou si le pixel central n'a pas de voisins et à une hauteur nulle
+                            //sumOfDifferences vaut 0 si le pixel central n'a pas de voisins donc il reçoit juste toute la matière qu'il a perdu
                             else {
-                                newLayersThickness[newLayerIndex * m_gridHeight * m_gridWidth + nextI * m_gridWidth + nextJ] -= dh/ vectorOfLowNeighbors.size();
+                                newLayersThickness[newLayerIndex * m_gridHeight * m_gridWidth + nextI * m_gridWidth + nextJ] -= dh;
                             }
                             
                         }
