@@ -1002,29 +1002,14 @@ void renderImGui() {
     ImGui::Spacing();
     ImGui::Spacing();
 
-    static float thetaLimit = 0.3;
-    static float erosionCoeff = 0.3;
-    static float dt = 0.0500;
-    static int thermal_iter = 5;
+    static float thetaLimit_t = 0.3;
+    static float erosionCoeff_t = 0.3;
+    static float dt_t = 0.0500;
+    static int iter_t = 5;
 
     if (ImGui::Button("Start thermal erosion")) {
-        mesh->applyNThermalErosion(thermal_iter, thetaLimit, erosionCoeff, dt, true);
+        mesh->applyNThermalErosion(iter_t, thetaLimit_t, erosionCoeff_t, dt_t, true);
     }
-
-    if (ImGui::TreeNode("Parameters")) {
-
-
-
-        ImGui::SliderFloat("Theta", &thetaLimit, 0, PI / 2);
-        ImGui::SliderFloat("Erosion coefficient", &erosionCoeff, 0, 1);
-        ImGui::SliderFloat("Dt", &dt, 0.000001f, 0.1f, "%f", ImGuiSliderFlags_Logarithmic);
-        ImGui::SliderInt("Number of iterations", &thermal_iter, 1, 1000);
-        ImGui::TreePop();
-    }
-
-    ImGui::Spacing();
-
-    if (ImGui::Button("Start hydraulic erosion")) {}
 
     if (ImGui::TreeNode("Parameters")) {
 
@@ -1104,10 +1089,30 @@ void renderImGui() {
         if (ImGui::RadioButton("All neighbours", &neighbourReceiver, 0)) {
         }
 
-        ImGui::SliderFloat("Theta", &thetaLimit, 0, PI / 2);
-        ImGui::SliderFloat("Erosion coefficient", &erosionCoeff, 0, 1);
-        ImGui::SliderFloat("Dt", &dt, 0.000001f, 0.1f, "%f", ImGuiSliderFlags_Logarithmic);
-        ImGui::SliderInt("Number of iterations", &thermal_iter, 1, 1000);
+        ImGui::SliderFloat("Theta", &thetaLimit_t, 0, PI / 2);
+        ImGui::SliderFloat("Erosion coefficient", &erosionCoeff_t, 0, 1);
+        ImGui::SliderFloat("Dt", &dt_t, 0.000001f, 0.1f, "%f", ImGuiSliderFlags_Logarithmic);
+        ImGui::SliderInt("Number of iterations", &iter_t, 1, 1000);
+        ImGui::TreePop();
+    }
+
+    ImGui::Spacing();
+
+    static float thetaLimit_h = 0.3;
+    static float erosionCoeff_h = 0.3;
+    static float dt_h = 0.0500;
+    static int iter_h = 5;
+
+    if (ImGui::Button("Start hydraulic erosion")) {
+        mesh->applyNThermalErosion(iter_h, thetaLimit_h, erosionCoeff_h, dt_h, true);
+    }
+
+    if (ImGui::TreeNode("Parameters")) {
+
+        ImGui::SliderFloat("Theta", &thetaLimit_h, 0, PI / 2);
+        ImGui::SliderFloat("Erosion coefficient", &erosionCoeff_h, 0, 1);
+        ImGui::SliderFloat("Dt", &dt_h, 0.000001f, 0.1f, "%f", ImGuiSliderFlags_Logarithmic);
+        ImGui::SliderInt("Number of iterations", &iter_h, 1, 1000);
         ImGui::TreePop();
     }
 
