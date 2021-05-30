@@ -1272,7 +1272,6 @@ void renderImGui() {
         //ImGui::SliderFloat("Dt", &dt_h, 0.000001f, 0.1f, "%f", ImGuiSliderFlags_Logarithmic);
         //ImGui::SliderInt("Number of iterations", &iter_h, 1, 1000);
         ImGui::TreePop();
-
         
     }*/
 
@@ -1294,6 +1293,7 @@ void renderImGui() {
     ImGui::Spacing();
 
     if (ImGui::Button("Restart")) {
+        g_nbOfItrations_t = 0;
         mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
         mesh->init();
     }
