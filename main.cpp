@@ -215,15 +215,15 @@ void Mesh::render() {
 
     //On donne la matrice du modèle au vertex shader et les couleurs au fragment shader
     glUniformMatrix4fv(glGetUniformLocation(g_program, "modelMat"), 1, GL_FALSE, glm::value_ptr(model)); 
-    
-    
+
     glBindVertexArray(m_vao);
     
     // bind the buffers
     glBindBuffer(GL_ARRAY_BUFFER, g_gridPosVbo);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), (void*) 0);
     glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), (void*) 0);
 
+    //std::cout << "R " << g_terrainLayersHeightVboR << std::endl;
     glBindBuffer(GL_ARRAY_BUFFER, g_terrainLayersHeightVboR);
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 1 * sizeof(GLfloat), 0); //Pour plus de layer faire un shader par layer et load le bon dans initGPUPrograms
@@ -356,29 +356,29 @@ Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec
 }
 
 GLuint loadTextureFromFileToGPU(const std::string &filename) {
-  int width, height, numComponents;
-  // Loading the image in CPU memory using stbd_image
-  unsigned char *data = stbi_load(
+    int width, height, numComponents;
+    // Loading the image in CPU memory using stbd_image
+    unsigned char *data = stbi_load(
     filename.c_str(),
     &width, &height,
     &numComponents, // 1 for a 8 bit greyscale image, 3 for 24bits RGB image, 4 for 32bits RGBA image
     0);
-  GLuint texID;
-  glGenTextures(1, &texID); // generate an OpenGL texture container
-  glBindTexture(GL_TEXTURE_2D, texID); // activate the texture
-  // The following lines setup the texture filtering option and repeat mode; check www.opengl.org for details.
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-  // fills the GPU texture with the data stored in the CPU image
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+    GLuint texID;
+    glGenTextures(1, &texID); // generate an OpenGL texture container
+    glBindTexture(GL_TEXTURE_2D, texID); // activate the texture
+    // The following lines setup the texture filtering option and repeat mode; check www.opengl.org for details.
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    // fills the GPU texture with the data stored in the CPU image
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
 
-  // Freeing the now useless CPU memory
-  stbi_image_free(data);
-  glBindTexture(GL_TEXTURE_2D, 0); // unbind the texture
+    // Freeing the now useless CPU memory
+    stbi_image_free(data);
+    glBindTexture(GL_TEXTURE_2D, 0); // unbind the texture
 
-  return texID;
+    return texID;
 }
 
 void printHelp()
@@ -397,21 +397,21 @@ void printHelp()
 
 // Executed each time the window is resized. Adjust the aspect ratio and the rendering viewport to the current window.
 void windowSizeCallback(GLFWwindow* window, int width, int height) {
-  g_camera.setAspectRatio(static_cast<float>(width)/static_cast<float>(height));
-  glViewport(0, 0, (GLint)width, (GLint)height); // Dimension of the rendering region in the window
+    g_camera.setAspectRatio(static_cast<float>(width)/static_cast<float>(height));
+    glViewport(0, 0, (GLint)width, (GLint)height); // Dimension of the rendering region in the window
 }
 
 // Executed each time a key is entered.
 void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-  if(action == GLFW_PRESS && key == GLFW_KEY_W) {
+    if(action == GLFW_PRESS && key == GLFW_KEY_W) {
     glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-  } else if(action == GLFW_PRESS && key == GLFW_KEY_F) {
+    } else if(action == GLFW_PRESS && key == GLFW_KEY_F) {
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-  } else if(action == GLFW_PRESS && (key == GLFW_KEY_ESCAPE || key == GLFW_KEY_Q)) {
+    } else if(action == GLFW_PRESS && (key == GLFW_KEY_ESCAPE || key == GLFW_KEY_Q)) {
     glfwSetWindowShouldClose(window, true); // Closes the application if the escape key is pressed
-  } else if (action == GLFW_PRESS && key == GLFW_KEY_H) {
-     printHelp();
-  }
+    } else if (action == GLFW_PRESS && key == GLFW_KEY_H) {
+        printHelp();
+    }
 }
 
 
@@ -583,8 +583,8 @@ void initOpenGL() {
     GLuint unusedIds = 0;
     glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, &unusedIds, true);
 
-    glCullFace(GL_BACK); // specifies the faces to cull (here the ones pointing away from the camera)
-    glEnable(GL_CULL_FACE); // enables face culling (based on the orientation defined by the cw/ccw enumeration).
+    //glCullFace(GL_BACK); // specifies the faces to cull (here the ones pointing away from the camera)
+    //glEnable(GL_CULL_FACE); // enables face culling (based on the orientation defined by the cw/ccw enumeration).
     glDepthFunc(GL_LESS);   // Specify the depth test for the z-buffer
     glEnable(GL_DEPTH_TEST);      // Enable the z-buffer test in the rasterization
     glClearColor(0.7f, 0.7f, 0.7f, 1.0f); // specify the background color, used any time the framebuffer is cleared
@@ -775,15 +775,15 @@ void initBuffersAndUniforms() {
 }
 
 void initCamera() {
-  int width, height;
-  glfwGetWindowSize(g_window, &width, &height);
-  g_camera.setAspectRatio(static_cast<float>(width)/static_cast<float>(height));
+    int width, height;
+    glfwGetWindowSize(g_window, &width, &height);
+    g_camera.setAspectRatio(static_cast<float>(width)/static_cast<float>(height));
 
-  g_camera.setPosition(glm::vec3(0.0, 0.0, 10.0));
-  g_camera.setNear(0.1);
-  g_camera.setFar(20.0);
+    g_camera.setPosition(glm::vec3(0.0, 0.0, 10.0));
+    g_camera.setNear(0.1);
+    g_camera.setFar(20.0);
 
-  std::cout << "---INIT CAMERA DONE---" << std::endl;
+    std::cout << "---INIT CAMERA DONE---" << std::endl;
 }
 
 void render();
@@ -878,7 +878,7 @@ void init() {
     initGLFW();
     initOpenGL();
     //Pour l'instant ne fonctionne qu'en mode 1 layer...
-    mesh = new Mesh({ "../data/heightmap4.jpg" }, {glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 1.f)); //cpu
+    mesh = new Mesh({ "../data/heightmap4.jpg" }, {glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
     //g_sunID = loadTextureFromFileToGPU("../data/heightmap3.jpg");
     initGPUprograms(); //Init aussi les dimension de l'espace d'invocation
     initBuffersAndUniforms(); //Aprs gpu programs car fait aussi uniform
@@ -915,23 +915,27 @@ int main(int argc, char ** argv) {
     init(); // Your initialization code (user interface, OpenGL states, scene with geometry, material, lights, etc)
 
     GLuint swapBuff = 0;
+    unsigned int nbOfIt = 100000;
     while(!glfwWindowShouldClose(g_window)) {
-        //Phase de calculs :
-        glUseProgram(g_computeProgram);
-        //Bind les buffer du compute shader :
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, g_terrainLayersHeightVboR);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, g_terrainLayersHeightVboW);
-        //Appelle au compute shader
-        glDispatchCompute(g_nbGroupsX, g_nbGroupsY, 1); //Dimension 2D de l'espace d'invocation x correspond à i et y à j
-        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-        //std::cout << " X : " << g_nbGroupsX << " Y : " << g_nbGroupsY << std::endl;
+        if (nbOfIt > 0) {
+            //Phase de calculs :
+            glUseProgram(g_computeProgram);
+            //Bind les buffer du compute shader :
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, g_terrainLayersHeightVboR);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, g_terrainLayersHeightVboW);
+            //Appelle au compute shader
+            glDispatchCompute(g_nbGroupsX, g_nbGroupsY, 1); //Dimension 2D de l'espace d'invocation x correspond à i et y à j
+            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+            //std::cout << " X : " << g_nbGroupsX << " Y : " << g_nbGroupsY << std::endl;
 
-        //Swap les buffer R et W
-        swapBuff = g_terrainLayersHeightVboR;
-        g_terrainLayersHeightVboR = g_terrainLayersHeightVboW;
-        g_terrainLayersHeightVboW = swapBuff;
-        std::cout << "R " << g_terrainLayersHeightVboR << std::endl;
-        std::cout << "W " << g_terrainLayersHeightVboW << std::endl;
+
+            //Swap les buffer R et W
+            swapBuff = g_terrainLayersHeightVboR;
+            g_terrainLayersHeightVboR = g_terrainLayersHeightVboW;
+            g_terrainLayersHeightVboW = swapBuff;
+
+            nbOfIt -= 1;
+        }
 
         //Update les normales avec compute shader ?
 
@@ -942,8 +946,6 @@ int main(int argc, char ** argv) {
 
         glfwSwapBuffers(g_window);
         glfwPollEvents();
-
-        Sleep(250);
     }
 
     // Cleanup

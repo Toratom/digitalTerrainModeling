@@ -10,11 +10,16 @@
 #define PATCH_WIDTH 32
 //ATTENTION doit etre coherent avec les defines dans main.cpp
 
-layout(std140, binding = 0) buffer readonly ThickR {
+//Ce sont des interface block i.e. une interface qui permet de regrouper plusieurs variable GPU, par exemple on regroupe ici dans le tableau (buffer) ThicknessR des floats
+//Il faut preciser comment sont rangees les donnes dans le block, le stride qui les separe (i.e. comment sont ranges les floats dans le buffer ou les uns à la suite des autres
+//un float puis du padding pour avoir la taille d'un vec4 puis un autre float). Pour preciser la convention utiliser pour ranger les donnes dans le block on utilise layout(...)
+//Le deuxieme exemple correspond à std140... ?
+//On appelle membre les elements à l'interieure du block (dans notre cas des floats).
+layout(std430, binding = 0) buffer readonly ThickR { //avec std140 pb car stride de 4 donc avant on ecrivait dans le padding !?
 	float ThicknessR[][NB_OF_LAYERS]; //Faire la même chose pour les water props, utiliser des arrays d'array
 };
 
-layout(std140, binding = 1) buffer writeonly ThickW {
+layout(std430, binding = 1) buffer writeonly ThickW {
 	float ThicknessW[][NB_OF_LAYERS];
 };
 
@@ -42,11 +47,6 @@ float getHeight(int i, int j) {
 	return h;
 }
 
-//Pour test flou gaussien
-//float getGaussWeight(float h, float sig) {
-//	return exp(- (h * h) / (2.0 * sig * sig));
-//}
-
 void main() {
 	//Pour test flou gaussien
 	//const float sig = 2.0;
@@ -57,17 +57,16 @@ void main() {
 	const int i = pointIJ.x;
 	const int j = pointIJ.y;
 
+
 	if (i < gridHeight && j < gridWidth) {
-		//float newH = 0;
-		//float currentH = 0;
-		//for (int dI = -halfKSize; dI < halfKSize + 1; dI += 1) {
-		//	for (int dJ = -halfKSize; dJ < halfKSize + 1; dJ += 1) {
-		//		newH += getHeight(i + dI, j + dJ) / (kSize * kSize);
-		//	}
-		//}
+		float newH = 0;
+		float currentH = 0;
+		for (int dI = -halfKSize; dI < halfKSize + 1; dI += 1) {
+			for (int dJ = -halfKSize; dJ < halfKSize + 1; dJ += 1) {
+				newH += getHeight(i + dI, j + dJ) / (kSize * kSize);
+			}
+		}
 
-		//ThicknessW[getIndex(i, j)][0] = newH;
-
-		ThicknessW[getIndex(i, j)][0] = getHeight(i, j)/1.5;
+		ThicknessW[getIndex(i, j)][0] = newH;
 	}
 }
