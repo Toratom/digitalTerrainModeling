@@ -1255,14 +1255,14 @@ void renderImGui() {
     }
 
     ImGui::Spacing();
-
+    /*
     static float thetaLimit_h = 0.3;
     static float erosionCoeff_h = 0.3;
     static float dt_h = 0.0500;
     static int iter_h = 5;
 
     if (ImGui::Button("Start hydraulic erosion")) {
-        //mesh->applyNThermalErosion(iter_h, thetaLimit_h, erosionCoeff_h, dt_h, true);
+        mesh->applyNThermalErosion(iter_h, thetaLimit_h, erosionCoeff_h, dt_h, true);
     }
 
     if (ImGui::TreeNode("Parameters")) {
@@ -1274,7 +1274,7 @@ void renderImGui() {
         ImGui::TreePop();
 
         
-    }
+    }*/
 
     
 
@@ -1292,6 +1292,11 @@ void renderImGui() {
     ImGui::Spacing();
     ImGui::Spacing();
     ImGui::Spacing();
+
+    if (ImGui::Button("Restart")) {
+        mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
+        mesh->init();
+    }
 
     if (ImGui::TreeNode("Colors")) {
 
