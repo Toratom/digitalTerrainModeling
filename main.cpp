@@ -47,6 +47,19 @@ GLFWwindow *g_window = nullptr;
 int g_windowWidth = 1024;
 int g_windowHeight = 768;
 
+//Simulation parameters
+float g_thetaLimit_t = 0.3;
+float g_erosionCoeff_t = 0.3;
+float g_dt_t = 0.0500;
+int g_iter_t = 5;
+int g_strategyErosion_t = 0; //stratégie A
+int g_typeErosion_t = 1; //Layer breaks into sand
+int g_connexity_t = 0; // 4 connexité
+int g_descentDirection_t = 0; //Heighest gradient
+int g_typeGradient_t = 0; //Heighest gradient
+int g_neighbourReceiver_t = 0; //all neighbors
+unsigned int g_nbOfItrations_t = 0;
+
 GLFWwindow* g_window2 = nullptr;
 
 // GPU objects
@@ -1152,20 +1165,8 @@ void renderImGui() {
     ImGui::Spacing();
     ImGui::Spacing();
 
-    static float thetaLimit_t = 0.3;
-    static float erosionCoeff_t = 0.3;
-    static float dt_t = 0.0500;
-    static int iter_t = 5;
-    static int strategyErosion_t = 0; //stratégie A
-    static int typeErosion_t = 1; //Layer breaks into sand
-    static int connexity_t = 0; // 4 connexité
-    static int descentDirection_t = 0; //Heighest gradient
-    static int typeGradient_t = 0; //Heighest gradient
-    static int neighbourReceiver_t = 0; //all neighbors
-
-
     if (ImGui::Button("Start thermal erosion")) {
-        mesh->applyNThermalErosion(iter_t, thetaLimit_t, erosionCoeff_t, dt_t, neighbourReceiver_t, descentDirection_t, typeErosion_t, connexity_t, strategyErosion_t);
+        g_nbOfItrations_t = g_iter_t;
     }
 
     if (ImGui::TreeNode("Parameters")) {
@@ -1175,11 +1176,11 @@ void renderImGui() {
         ImGui::Spacing();
 
         
-        if (ImGui::RadioButton("Strategy A", &strategyErosion_t, 0)) {
+        if (ImGui::RadioButton("Strategy A", &g_strategyErosion_t, 0)) {
         }
         ImGui::SameLine();
 
-        if (ImGui::RadioButton("Strategy B", &strategyErosion_t, 1)) {
+        if (ImGui::RadioButton("Strategy B", &g_strategyErosion_t, 1)) {
         }
 
         ImGui::Spacing();
@@ -1187,11 +1188,11 @@ void renderImGui() {
         ImGui::Spacing();
 
         
-        if (ImGui::RadioButton("Layer breaks into sand", &typeErosion_t, 1)) {
+        if (ImGui::RadioButton("Layer breaks into sand", &g_typeErosion_t, 1)) {
         }
         ImGui::SameLine();
 
-        if (ImGui::RadioButton("Layer falls down to same layer", &typeErosion_t, 0)) {
+        if (ImGui::RadioButton("Layer falls down to same layer", &g_typeErosion_t, 0)) {
         }
 
         ImGui::Spacing();
@@ -1199,11 +1200,11 @@ void renderImGui() {
         ImGui::Spacing();
 
         
-        if (ImGui::RadioButton("8", &connexity_t, 1)) {
+        if (ImGui::RadioButton("8", &g_connexity_t, 1)) {
         }
         ImGui::SameLine();
 
-        if (ImGui::RadioButton("4", &connexity_t, 0)) {
+        if (ImGui::RadioButton("4", &g_connexity_t, 0)) {
         }
 
         ImGui::Spacing();
@@ -1211,11 +1212,11 @@ void renderImGui() {
         ImGui::Spacing();
 
         
-        if (ImGui::RadioButton("Lowest neighbour", &descentDirection_t, 1)) {
+        if (ImGui::RadioButton("Lowest neighbour", &g_descentDirection_t, 1)) {
         }
         ImGui::SameLine();
 
-        if (ImGui::RadioButton("Heighest gradient", &descentDirection_t, 0)) {
+        if (ImGui::RadioButton("Heighest gradient", &g_descentDirection_t, 0)) {
         }
 
         ImGui::Spacing();
@@ -1223,15 +1224,15 @@ void renderImGui() {
         ImGui::Spacing();
 
         
-        if (ImGui::RadioButton("i+1 | i", &typeGradient_t, 2)) {
+        if (ImGui::RadioButton("i+1 | i", &g_typeGradient_t, 2)) {
         }
         ImGui::SameLine();
 
-        if (ImGui::RadioButton("i | i-1", &typeGradient_t, 1)) {
+        if (ImGui::RadioButton("i | i-1", &g_typeGradient_t, 1)) {
         }
         ImGui::SameLine();
 
-        if (ImGui::RadioButton("i+1 | i-1", &typeGradient_t, 0)) {
+        if (ImGui::RadioButton("i+1 | i-1", &g_typeGradient_t, 0)) {
         }
 
         ImGui::Spacing();
@@ -1239,17 +1240,17 @@ void renderImGui() {
         ImGui::Spacing();
 
         
-        if (ImGui::RadioButton("With descent direction", &neighbourReceiver_t, 1)) {
+        if (ImGui::RadioButton("With descent direction", &g_neighbourReceiver_t, 1)) {
         }
         ImGui::SameLine();
 
-        if (ImGui::RadioButton("All neighbours", &neighbourReceiver_t, 0)) {
+        if (ImGui::RadioButton("All neighbours", &g_neighbourReceiver_t, 0)) {
         }
 
-        ImGui::SliderFloat("Theta", &thetaLimit_t, 0, PI / 2);
-        ImGui::SliderFloat("Erosion coefficient", &erosionCoeff_t, 0, 1);
-        ImGui::SliderFloat("Dt", &dt_t, 0.000001f, 0.1f, "%f", ImGuiSliderFlags_Logarithmic);
-        ImGui::SliderInt("Number of iterations", &iter_t, 1, 1000);
+        ImGui::SliderFloat("Theta", &g_thetaLimit_t, 0, PI / 2);
+        ImGui::SliderFloat("Erosion coefficient", &g_erosionCoeff_t, 0, 1);
+        ImGui::SliderFloat("Dt", &g_dt_t, 0.000001f, 0.1f, "%f", ImGuiSliderFlags_Logarithmic);
+        ImGui::SliderInt("Number of iterations", &g_iter_t, 1, 1000);
         ImGui::TreePop();
     }
 
@@ -1395,18 +1396,22 @@ void render() {
 }
 
 int main(int argc, char ** argv) {
-  init(); // Your initialization code (user interface, OpenGL states, scene with geometry, material, lights, etc)
+    init(); // Your initialization code (user interface, OpenGL states, scene with geometry, material, lights, etc)
 
-  while(!glfwWindowShouldClose(g_window)) {
-    render();
-    renderImGui();
+    while(!glfwWindowShouldClose(g_window)) {
+        if (g_nbOfItrations_t > 1) {
+            mesh->applyNThermalErosion(1, g_thetaLimit_t, g_erosionCoeff_t, g_dt_t, g_neighbourReceiver_t, g_descentDirection_t, g_typeErosion_t, g_connexity_t, g_strategyErosion_t);
+            g_nbOfItrations_t -= 1;
+        }
+        render();
+        renderImGui();
 
-    glfwSwapBuffers(g_window);
-    glfwPollEvents();
-  }
+        glfwSwapBuffers(g_window);
+        glfwPollEvents();
+    }
 
-  // Cleanup
-  clear();
-  return EXIT_SUCCESS;
+    // Cleanup
+    clear();
+    return EXIT_SUCCESS;
 }
 
