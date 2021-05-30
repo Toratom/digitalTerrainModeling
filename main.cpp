@@ -30,6 +30,7 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
+#include <algorithm>
 #include <string>
 
 #define _USE_MATH_DEFINES
@@ -119,9 +120,11 @@ public:
     float getJDerivate(unsigned int i, unsigned int j) const; //Derive par rapport à j (X)
     glm::vec2 getGradient(unsigned int i, unsigned int j) const;
     void setLayersColors(int layer, float color[]);
-    void thermalErosionA(float thetaLimit,float erosionCoeff,float dt);
+    std::vector<glm::uvec2> getAllLowNeighbors(unsigned int i, unsigned int j, bool connexity8) const;
+    void thermalErosionA(float thetaLimit,float erosionCoeff,float dt, bool neighbourReceiver, bool descentDirection, bool typeErosion, bool connexity8);
     void thermalErosionB(float thetaLimit, float erosionCoeff, float dt, bool connexity8);
-    void applyNThermalErosion(unsigned int N, float thetaLimit, float erosionCoeff, float dt, bool connexity8);
+    void applyNThermalErosion(unsigned int N, float thetaLimit, float erosionCoeff, float dt, bool neighbourReceiver, bool descentDirection, bool typeErosion, bool connexity8, bool strategyB);
+
 
 private:
     unsigned int m_gridWidth = 0; //Nb de colonnes de la grille de discretisation (image)
@@ -545,6 +548,8 @@ float Mesh::getLayerH(unsigned int k, unsigned int i, unsigned int j) const {
 }
 
 glm::uvec2 Mesh::getLowestNeighbor(unsigned int i, unsigned int j) const {
+    //Prend en compte le pixel central donc pas besoin de vérifier qu'on a bien un voisin plus bas que ce pixel central
+
     //Test en connexité 8
     int lowestDI = -1;
     int lowestDJ = -1;
@@ -564,6 +569,63 @@ glm::uvec2 Mesh::getLowestNeighbor(unsigned int i, unsigned int j) const {
     }
 
     return glm::uvec2(i, j) + glm::uvec2(lowestDI, lowestDJ);
+}
+
+std::vector<glm::uvec2> Mesh::getAllLowNeighbors(unsigned int i, unsigned int j, bool connexity8) const {
+    //Test en connexité 8, retourne le vecteur de positions des voisins dans l'ordre des plus bas au plus haut 
+    // (jusqu'à la hauteur du pixel central)
+
+    float currentH;
+    float hCenter = getH(i, j);
+    std::vector<glm::uvec2> vectorOfLowNeighbors;
+    
+
+    if (connexity8) {
+        for (int di = -1; di < 2; di += 1) {
+            for (int dj = -1; dj < 2; dj += 1) {
+                int nextI = i + di;
+                int nextJ = j + dj;
+                //on vérifie qu'on ne sort pas de la grille
+                if (nextI >= 0 && nextJ >= 0 && nextI < m_gridHeight && nextJ < m_gridWidth) {
+                    currentH = getH(nextI, nextJ);
+                    if (currentH < hCenter) {
+                        vectorOfLowNeighbors.push_back(glm::uvec2(nextI, nextJ));
+                    }
+                }
+
+            }
+        }
+    }
+    // 4 connexité
+    else {
+        for (int di = -1; di < 2; di += 1) {
+            for (int dj = -1; dj < 2; dj += 1) {
+                //on est en connexité 4
+                if (di != 1 || dj != 1) {
+
+                    int nextI = i + di;
+                    int nextJ = j + dj;
+                    //on vérifie qu'on ne sort pas de la grille
+                    if (nextI >= 0 && nextJ >= 0 && nextI < m_gridHeight && nextJ < m_gridWidth) {
+                        currentH = getH(nextI, nextJ);
+                        if (currentH < hCenter) {
+                            vectorOfLowNeighbors.push_back(glm::uvec2(nextI, nextJ));
+                        }
+                    }
+
+                }
+
+            }
+        }
+    }
+
+    if (vectorOfLowNeighbors.size() == 0) {
+        //on compte le pixel central car on lui a enlevé de la matière donc s'il
+        //n'a aucun voisin plus bas que lui, on lui remet sa matière
+        vectorOfLowNeighbors.push_back(glm::uvec2(i, j));
+    }
+    
+    return vectorOfLowNeighbors;
 }
 
 float Mesh::getLayerThickness(unsigned int k, unsigned int i, unsigned int j) const {
@@ -621,68 +683,146 @@ glm::vec2 Mesh::getGradient(unsigned int i, unsigned int j) const {
     return glm::vec2(getIDerivate(i, j), getJDerivate(i, j));
 }
 
-void Mesh::thermalErosionA(float thetaLimit, float erosionCoeff, float dt) {
+
+void Mesh::thermalErosionA(float thetaLimit, float erosionCoeff, float dt, bool neighbourReceiver, bool descentDirection, bool typeErosion, bool connexity8) {
     float tangentLimit = glm::tan(thetaLimit);
-    std::cout << m_gridWidth << " " << m_gridHeight << std::endl;
-    std::vector<float> newLayersThickness = m_layersThickness;
+    std::vector<float> newLayersThickness = m_layersThickness; //vecteur mémoire temporaire
+    //neigbourReceiver = 0 : tous les voisins plus bas recoivent dh, 1 : voisin dans la direction de descente
+    //descentDirection = 0 : gradient direction, 1 : lowest neighbour
+    //typeErosion = 1 : L'érosion donne du sable, 0 : l'érosion donne le même layer (et passe sous le sable)
+
 
     for (unsigned int i = 0; i < m_gridHeight; i++) {
         for (unsigned int j = 0; j < m_gridWidth; j++)
-        {   
+        {
             glm::vec2 directionDescent = -getGradient(i, j);
             float slope = glm::length(directionDescent);
 
-            if (slope > 0) {
-                directionDescent = directionDescent / slope; //normalise la direction de descente
-            }
+            //if (slope > 0) {directionDescent = directionDescent / slope;} //normalise la direction de descente
 
             //condition d'érosion
             if (slope > tangentLimit) {
+                //index du layer qui donne
                 int layerIndexCurrentCell = getTopLayerId(i, j);
 
-                float dh = -erosionCoeff * (slope - tangentLimit) * dt; // ? Pb dh peut-être plus grand que l'epaisseur du layer
+                //index du layer qui reçoit
+                int newLayerIndex;
+                //Si la matière s'érode et donne du sable
+                if (typeErosion != 0) {
+                    newLayerIndex = m_nbOfLayers - 1; //Modifier le -1 quand on rajoutera de l'eau à -2
+                }
+                //La matière érodée donne la même matière
+                else {
+                    newLayerIndex = layerIndexCurrentCell;
+                }
+
+                float dh = -erosionCoeff * (slope -tangentLimit) * dt; //<=0
+
+                //Si dh est plus grand que l'epaisseur du layer
                 if (-dh > getLayerThickness(layerIndexCurrentCell, i, j)) {
-                    dh = - getLayerThickness(layerIndexCurrentCell, i, j);
+                    dh = -getLayerThickness(layerIndexCurrentCell, i, j);
                 }
 
                 //on erode si on est pas le layer le plus bas
                 if (layerIndexCurrentCell > 0) {
+                    
 
                     float newThicknessCurrentCell = getLayerThickness(layerIndexCurrentCell, i, j) + dh;
 
                     newLayersThickness[layerIndexCurrentCell * m_gridHeight * m_gridWidth + i * m_gridWidth + j] = (newThicknessCurrentCell > 0) ? newThicknessCurrentCell : 0.f;
+                    
+                    //On donne la matière à un voisin (dans la direction de descente)
+                    if (neighbourReceiver!=0) {
+                        //std::cout << "Un seul voisin reçoit la matière" << std::endl;
 
-                    //On va maintenant rajouter de la matière sur la cellule dans la direction de plus forte descente
-                    //glm::vec2 nextCell = glm::vec2(i, j) + directionDescent; // ? Pose pb ? Essayer prendre la cellule voisine la plus basse
-                    //int nextI = round(nextCell.x);//pour obtenir la cellule i,j dans laquelle on atterit
-                    //int nextJ = round(nextCell.y);
-                    glm::uvec2 nextCell = getLowestNeighbor(i, j); // ? Pose pb ? Essayer prendre la cellule voisine la plus basse
-                    unsigned int nextI = nextCell.x;//pour obtenir la cellule i,j dans laquelle on atterit
-                    unsigned int nextJ = nextCell.y;
+                        unsigned int nextI;
+                        unsigned int nextJ;
+                        glm::uvec2 nextCell;
 
-                    //Etude du cas (26, 34) de qui il recoit de la matiere (i == 26 && j == 34) || (i == 27 && j == 34) || (i == 26 && j == 33) || (i == 26 && j == 35) || (i == 27 && j == 35)
-                    //if ((i == 61 && j == 62) || (i == 36 && j == 37)) {
-                    //    if (getH(nextI, nextJ) > getH(i, j)) {
-                    //        std::cout << "PB ";
-                    //    }
-                    //    std::cout << "i "<< i << " j " << j << " Dir - grad " << directionDescent.x << " " << directionDescent.y << -dh << " nextI " << nextI << " NextJ " << nextJ << std::endl;
-                    //}
+                        //Solution 1 : On donne le layer au voisin dans la direction de descente : peut poser pb 
+                        if (descentDirection ==0) {
+                            //std::cout << "Le voisin qui reçoit la matière est celui dans la direction de plus fort gradient" << std::endl;
+                            nextCell = glm::vec2(i, j) + directionDescent; 
+                            nextI = round(nextCell.x); //pour obtenir la cellule i,j dans laquelle on atterit
+                            nextJ = round(nextCell.y);
+                        }
 
-                    //gérer les bords, on ne transfère la matière que sur des cellules à l'intérieur
-                    if (nextI >= 0 && nextJ >= 0 && nextI < m_gridHeight && nextJ < m_gridWidth) {
-                        //float newThicknessNextCell = getLayerThickness(layerIndexCurrentCell, nextI, nextJ) - dh;
-                        newLayersThickness[layerIndexCurrentCell * m_gridHeight * m_gridWidth + nextI * m_gridWidth + nextJ] -= dh;
+                        //Solution 2 : On donne le layer au voisin le plus bas
+                        else {
+                            //std::cout << "Le voisin qui reçoit la matière est le plus bas" << std::endl;
+                            nextCell = getLowestNeighbor(i, j);
+                            nextI = nextCell.x; //pour obtenir la cellule i,j dans laquelle on atterit
+                            nextJ = nextCell.y;
+                        }
+
+                        //Etude du cas (26, 34) de qui il recoit de la matiere (i == 26 && j == 34) || (i == 27 && j == 34) || (i == 26 && j == 33) || (i == 26 && j == 35) || (i == 27 && j == 35)
+                        //if ((i == 61 && j == 62) || (i == 36 && j == 37)) {
+                        //    if (getH(nextI, nextJ) > getH(i, j)) {
+                        //        std::cout << "PB ";
+                        //    }
+                        //    std::cout << "i "<< i << " j " << j << " Dir - grad " << directionDescent.x << " " << directionDescent.y << -dh << " nextI " << nextI << " NextJ " << nextJ << std::endl;
+                        //}
+
+                        //gérer les bords, on ne transfère la matière que sur des cellules à l'intérieur
+                        if (nextI >= 0 && nextJ >= 0 && nextI < m_gridHeight && nextJ < m_gridWidth) {
+                            //float newThicknessNextCell = getLayerThickness(layerIndexCurrentCell, nextI, nextJ) - dh;
+                            newLayersThickness[newLayerIndex * m_gridHeight * m_gridWidth + nextI * m_gridWidth + nextJ] -= dh;
+                        }
+  
                     }
+
+                    //On distribue la matière dans tous les voisins, plus un voisin est bas plus reçoit de matière
+                    //ici, le voisin i de hauteur hi reçoit -dh*(hi-h_j)/(somme de h_i - h_j) (>=0)
+                    //ainsi, plus la différence de niveau est grande, plus le voisin reçoit de la matière.
+                    else {
+                        //std::cout << "Tous les voisins inférieurs reçoivent la matière" << std::endl;
+
+                        std::vector<glm::uvec2> vectorOfLowNeighbors = getAllLowNeighbors(i, j, connexity8);
+                        unsigned int nextI;
+                        unsigned int nextJ;
+                        float sumOfDifferences = 0;
+
+                        //calcul de somme des h_i-h_j
+                        for (unsigned int i = 0; i < vectorOfLowNeighbors.size(); i++)
+                        {
+
+                            glm::uvec2 nextCell = vectorOfLowNeighbors.at(i);
+                            nextI = nextCell.x; //pour obtenir la cellule i,j dans laquelle on atterit
+                            nextJ = nextCell.y;
+                            sumOfDifferences += getH(i,j)-getH(nextI, nextJ);
+                        }
+
+
+                        //distribution de dh chez les voisins inférieurs
+                        for (unsigned int i = 0; i < vectorOfLowNeighbors.size(); i++)
+                        {
+                            glm::uvec2 nextCell = vectorOfLowNeighbors.at(i);
+                            nextI = nextCell.x; //pour obtenir la cellule i,j dans laquelle on atterit
+                            nextJ = nextCell.y;
+                            
+                            if (sumOfDifferences > 0) {
+                                //nextI et nextJ respectent déjà les conditions au bord (cf la fonction getAllLowNeighbors)
+                                newLayersThickness[newLayerIndex * m_gridHeight * m_gridWidth + nextI * m_gridWidth + nextJ] -= dh * (getH(i,j)-getH(nextI, nextJ)) / sumOfDifferences;
+                            }
+                            //sumOfDifferences vaut 0 si le pixel central n'a pas de voisins donc il reçoit juste toute la matière qu'il a perdu
+                            else {
+                                newLayersThickness[newLayerIndex * m_gridHeight * m_gridWidth + nextI * m_gridWidth + nextJ] -= dh;
+                            }
+                            
+                        }
+                    } 
                 }
-                
+
             }
-            
+
         }
     }
 
     m_layersThickness = newLayersThickness;
 
     mesh->init();
+
+    
 }
 
 void Mesh::thermalErosionB(float thetaLimit, float erosionCoeff, float dt, bool connexity8 = true) {
@@ -716,6 +856,7 @@ void Mesh::thermalErosionB(float thetaLimit, float erosionCoeff, float dt, bool 
     float K = 1.f; //Coeff de normalisation si le dHOut superieure à H
     int nextCellI = 0;
     int nextCellJ = 0;
+    float distanceToNextCell = 0.f;
     float elevationLimit = glm::tan(thetaLimit);
     std::vector<float> newLayersThickness = m_layersThickness;
 
@@ -730,7 +871,8 @@ void Mesh::thermalErosionB(float thetaLimit, float erosionCoeff, float dt, bool 
                 for (unsigned int k = 0; k < neighborTranslations.size(); k ++) {
                     nextCellI = i + neighborTranslations[k].x;
                     nextCellJ = j + neighborTranslations[k].y;
-                    dHOut[k] = std::max(0.f, erosionCoeff * ((getH(i, j) - getH(nextCellI, nextCellJ)) / m_cellHeight - elevationLimit) * dt);
+                    distanceToNextCell = sqrt(pow(m_cellHeight * neighborTranslations[k].x, 2) + pow(m_cellWidth * neighborTranslations[k].y, 2));
+                    dHOut[k] = std::max(0.f, erosionCoeff * ((getH(i, j) - getH(nextCellI, nextCellJ)) / distanceToNextCell - elevationLimit) * dt);
                     dHOutTot += dHOut[k];
                 }
 
@@ -763,10 +905,18 @@ void Mesh::thermalErosionB(float thetaLimit, float erosionCoeff, float dt, bool 
     mesh->init();
 }
 
-void Mesh::applyNThermalErosion(unsigned int N, float thetaLimit, float erosionCoeff, float dt, bool connexity8) {
-    for (unsigned int i = 0; i < N; i += 1) {
-        thermalErosionB(thetaLimit, erosionCoeff, dt, connexity8);
+void Mesh::applyNThermalErosion(unsigned int N, float thetaLimit, float erosionCoeff, float dt, bool neighbourReceiver, bool descentDirection, bool typeErosion, bool connexity8, bool strategyB) {
+    if (strategyB) {
+        for (unsigned int i = 0; i < N; i += 1) {
+            thermalErosionB(thetaLimit, erosionCoeff, dt, connexity8);
+        }
     }
+    else {
+        for (unsigned int i = 0; i < N; i += 1) {
+            thermalErosionA(thetaLimit, erosionCoeff, dt, neighbourReceiver, descentDirection, typeErosion, connexity8);
+        }
+    }
+    
 }
 
 
@@ -827,7 +977,7 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
   } else if (action == GLFW_PRESS && key == GLFW_KEY_H) {
      printHelp();
   } else if (action == GLFW_PRESS && key == GLFW_KEY_E) {
-      mesh->applyNThermalErosion(100, 0.52, 0.3, 0.001, true); //0.52 = 30 degrés  dt = 0.001
+      mesh->applyNThermalErosion(100, 0.52, 0.3, 0.001, true, true, true, true, true); //0.52 = 30 degrés  dt = 0.001
       std::cout << "Thermal Erosion" << std::endl;
   }
 
@@ -1006,87 +1156,94 @@ void renderImGui() {
     static float erosionCoeff_t = 0.3;
     static float dt_t = 0.0500;
     static int iter_t = 5;
+    static int strategyErosion_t = 0; //stratégie A
+    static int typeErosion_t = 1; //Layer breaks into sand
+    static int connexity_t = 0; // 4 connexité
+    static int descentDirection_t = 0; //Heighest gradient
+    static int typeGradient_t = 0; //Heighest gradient
+    static int neighbourReceiver_t = 0; //all neighbors
+
 
     if (ImGui::Button("Start thermal erosion")) {
-        mesh->applyNThermalErosion(iter_t, thetaLimit_t, erosionCoeff_t, dt_t, true);
+        mesh->applyNThermalErosion(iter_t, thetaLimit_t, erosionCoeff_t, dt_t, neighbourReceiver_t, descentDirection_t, typeErosion_t, connexity_t, strategyErosion_t);
     }
 
     if (ImGui::TreeNode("Parameters")) {
 
         ImGui::Spacing();
-        ImGui::Text("Erosion's strategy:");
+        ImGui::Text("Erosion's strategy :");
         ImGui::Spacing();
 
-        static int strategyErosion = 0;
-        if (ImGui::RadioButton("Strategy 1", &strategyErosion, 1)) {
+        
+        if (ImGui::RadioButton("Strategy A", &strategyErosion_t, 0)) {
         }
         ImGui::SameLine();
 
-        if (ImGui::RadioButton("Strategy 2", &strategyErosion, 0)) {
+        if (ImGui::RadioButton("Strategy B", &strategyErosion_t, 1)) {
         }
 
         ImGui::Spacing();
-        ImGui::Text("Type of erosion:");
+        ImGui::Text("Type of erosion :");
         ImGui::Spacing();
 
-        static int typeErosion = 0;
-        if (ImGui::RadioButton("Sand", &typeErosion, 1)) {
+        
+        if (ImGui::RadioButton("Layer breaks into sand", &typeErosion_t, 1)) {
         }
         ImGui::SameLine();
 
-        if (ImGui::RadioButton("Same", &typeErosion, 0)) {
+        if (ImGui::RadioButton("Layer falls down to same layer", &typeErosion_t, 0)) {
         }
 
         ImGui::Spacing();
-        ImGui::Text("Connexity:");
+        ImGui::Text("Connexity :");
         ImGui::Spacing();
 
-        static int connexity = 0;
-        if (ImGui::RadioButton("8", &connexity, 1)) {
+        
+        if (ImGui::RadioButton("8", &connexity_t, 1)) {
         }
         ImGui::SameLine();
 
-        if (ImGui::RadioButton("4", &connexity, 0)) {
+        if (ImGui::RadioButton("4", &connexity_t, 0)) {
         }
 
         ImGui::Spacing();
-        ImGui::Text("Descent's direction:");
+        ImGui::Text("Descent's direction (strategy A) :");
         ImGui::Spacing();
 
-        static int descentDirection = 0;
-        if (ImGui::RadioButton("Lowest neighbour", &descentDirection, 1)) {
+        
+        if (ImGui::RadioButton("Lowest neighbour", &descentDirection_t, 1)) {
         }
         ImGui::SameLine();
 
-        if (ImGui::RadioButton("Heighest gradient", &descentDirection, 0)) {
+        if (ImGui::RadioButton("Heighest gradient", &descentDirection_t, 0)) {
         }
 
         ImGui::Spacing();
-        ImGui::Text("Gradient's type:");
+        ImGui::Text("Gradient's type (strategy A) :");
         ImGui::Spacing();
 
-        static int typeGradient = 0;
-        if (ImGui::RadioButton("i+1 | i", &typeGradient, 2)) {
+        
+        if (ImGui::RadioButton("i+1 | i", &typeGradient_t, 2)) {
         }
         ImGui::SameLine();
 
-        if (ImGui::RadioButton("i | i+1", &typeGradient, 1)) {
+        if (ImGui::RadioButton("i | i-1", &typeGradient_t, 1)) {
         }
         ImGui::SameLine();
 
-        if (ImGui::RadioButton("i+1 | i-1", &typeGradient, 0)) {
+        if (ImGui::RadioButton("i+1 | i-1", &typeGradient_t, 0)) {
         }
 
         ImGui::Spacing();
-        ImGui::Text("Matter's receiver:");
+        ImGui::Text("Matter's receiver (strategy A) :");
         ImGui::Spacing();
 
-        static int neighbourReceiver = 0;
-        if (ImGui::RadioButton("With heighest gradient", &neighbourReceiver, 1)) {
+        
+        if (ImGui::RadioButton("With descent direction", &neighbourReceiver_t, 1)) {
         }
         ImGui::SameLine();
 
-        if (ImGui::RadioButton("All neighbours", &neighbourReceiver, 0)) {
+        if (ImGui::RadioButton("All neighbours", &neighbourReceiver_t, 0)) {
         }
 
         ImGui::SliderFloat("Theta", &thetaLimit_t, 0, PI / 2);
@@ -1104,17 +1261,21 @@ void renderImGui() {
     static int iter_h = 5;
 
     if (ImGui::Button("Start hydraulic erosion")) {
-        mesh->applyNThermalErosion(iter_h, thetaLimit_h, erosionCoeff_h, dt_h, true);
+        //mesh->applyNThermalErosion(iter_h, thetaLimit_h, erosionCoeff_h, dt_h, true);
     }
 
     if (ImGui::TreeNode("Parameters")) {
 
-        ImGui::SliderFloat("Theta", &thetaLimit_h, 0, PI / 2);
-        ImGui::SliderFloat("Erosion coefficient", &erosionCoeff_h, 0, 1);
-        ImGui::SliderFloat("Dt", &dt_h, 0.000001f, 0.1f, "%f", ImGuiSliderFlags_Logarithmic);
-        ImGui::SliderInt("Number of iterations", &iter_h, 1, 1000);
+        //ImGui::SliderFloat("Theta", &thetaLimit_h, 0, PI / 2);
+        //ImGui::SliderFloat("Erosion coefficient", &erosionCoeff_h, 0, 1);
+        //ImGui::SliderFloat("Dt", &dt_h, 0.000001f, 0.1f, "%f", ImGuiSliderFlags_Logarithmic);
+        //ImGui::SliderInt("Number of iterations", &iter_h, 1, 1000);
         ImGui::TreePop();
+
+        
     }
+
+    
 
     ImGui::Spacing();
     ImGui::Separator();
@@ -1201,7 +1362,7 @@ void initImGui() {
 void init() {
   initGLFW();
   initOpenGL();
-  mesh = new Mesh({ "../data/simpleB.png", "../data/simpleStr.png" }, { glm::vec3(120.f/255.f, 135.f/255.f, 124.f/255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
+  mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png" }, { glm::vec3(120.f/255.f, 135.f/255.f, 124.f/255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
   //mesh = new Mesh(2, 100, 100, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.5f));
   initGPUprogram();
   //g_sunID = loadTextureFromFileToGPU("../data/heightmap3.jpg");
