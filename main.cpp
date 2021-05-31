@@ -137,6 +137,7 @@ public:
     float getLayerH(unsigned int k, unsigned int i, unsigned int j) const;
     void setLayerThickness(float value, unsigned int k, unsigned int i, unsigned int j);
     unsigned int getTopLayerId(unsigned int i, unsigned int j) const; //Id de 0 à m_nbOfLayers - 1 correspond à indice dans m_layersColor
+    unsigned int getTerrainTopLayerId(unsigned int i, unsigned int j) const; //Id de 0 à m_nbOfLayers - 2 correspond on exclu l'eau
     glm::uvec2 getLowestNeighbor(unsigned int i, unsigned int j) const;
     float getIDerivate(unsigned int i, unsigned int j) const; //Dervive par rapport à i c'est à dire quand passe de ligne i à ligne i + 1 (Z)
     float getJDerivate(unsigned int i, unsigned int j) const; //Derive par rapport à j (X)
@@ -581,6 +582,16 @@ unsigned int Mesh::getTopLayerId(unsigned int i, unsigned int j) const {
     return id;
 }
 
+unsigned int Mesh::getTerrainTopLayerId(unsigned int i, unsigned int j) const {
+    unsigned int id = m_nbOfLayers - 2;
+
+    while (getLayerThickness(id, i, j) == 0.f && id > 0) {
+        id = id - 1;
+    }
+
+    return id;
+}
+
 unsigned int Mesh::getIndex(unsigned int k, unsigned int i, unsigned int j) {
     return k * m_gridHeight * m_gridWidth + i * m_gridWidth + j;
 }
@@ -759,7 +770,7 @@ void Mesh::thermalErosionA(float thetaLimit, float erosionCoeff, float dt, bool 
             //condition d'érosion
             if (slope > tangentLimit) {
                 //index du layer qui donne
-                int layerIndexCurrentCell = getTopLayerId(i, j);
+                int layerIndexCurrentCell = getTerrainTopLayerId(i, j);
 
                 //index du layer qui reçoit
                 int newLayerIndex;
@@ -919,9 +930,9 @@ void Mesh::thermalErosionB(float thetaLimit, float erosionCoeff, float dt, bool 
     for (unsigned int i = 0; i < m_gridHeight; i++) {
         for (unsigned int j = 0; j < m_gridWidth; j++)
         {
-            topLayerIndexCurrentCell = getTopLayerId(i, j);
+            topLayerIndexCurrentCell = getTerrainTopLayerId(i, j);
 
-            if ((topLayerIndexCurrentCell > 0) && (topLayerIndexCurrentCell < m_nbOfLayers - 1)) { //Erosion il y a que si le layer afleurent n'est pas de la bedrock ni de l'eau
+            if (topLayerIndexCurrentCell > 0) { //Erosion il y a que si le layer afleurent n'est pas de la bedrock
                 //On calcule les dH
                 dHOutTot = 0.f;
                 for (unsigned int k = 0; k < neighborTranslations.size(); k ++) {
