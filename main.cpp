@@ -758,7 +758,6 @@ void Mesh::thermalErosionA(float thetaLimit, float erosionCoeff, float dt, bool 
     //descentDirection = 0 : gradient direction, 1 : lowest neighbour
     //typeErosion = 1 : L'érosion donne du sable, 0 : l'érosion donne le même layer (et passe sous le sable)
 
-
     for (unsigned int i = 0; i < m_gridHeight; i++) {
         for (unsigned int j = 0; j < m_gridWidth; j++)
         {
@@ -795,11 +794,10 @@ void Mesh::thermalErosionA(float thetaLimit, float erosionCoeff, float dt, bool 
                 //on erode si on est pas le layer le plus bas ou de l'eau
                 if (layerIndexCurrentCell > 0) {
                     
-                    
                     float newThicknessCurrentCell = currentThickness + dh;
 
                     newLayersThickness[layerIndexCurrentCell * m_gridHeight * m_gridWidth + i * m_gridWidth + j] = (newThicknessCurrentCell > 0) ? newThicknessCurrentCell : 0.f;
-                    
+
                     //On donne la matière à un voisin (dans la direction de descente)
                     if (neighbourReceiver!=0) {
                         //std::cout << "Un seul voisin reçoit la matière" << std::endl;
@@ -983,6 +981,7 @@ void Mesh::applyNThermalErosion(unsigned int N, float thetaLimit, float erosionC
     else {
         for (unsigned int i = 0; i < N; i += 1) {
             thermalErosionA(thetaLimit, erosionCoeff, dt, neighbourReceiver, descentDirection, typeErosion, connexity8);
+            
         }
     }
     
