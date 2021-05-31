@@ -58,14 +58,14 @@ int g_connexity_t = 0; // 4 connexité
 int g_descentDirection_t = 0; //Heighest gradient
 int g_typeGradient_t = 0; //Heighest gradient
 int g_neighbourReceiver_t = 0; //all neighbors
-unsigned int g_nbOfIterations_t = 1;
+unsigned int g_nbOfIterations_t = 0;
 unsigned int g_nbOfIterations_t_max = 1;
 
 //Fault parameters
 int g_fault_mode = 2;
 int g_fault_niter = 1;
 int g_fault_circlemode = 0;
-unsigned int g_fault_nbOfIterations = 1;
+unsigned int g_fault_nbOfIterations = 0;
 unsigned int g_fault_nbOfIterations_max = 1;
 
 GLFWwindow* g_window2 = nullptr;
@@ -143,11 +143,13 @@ public:
     float getJDerivate(unsigned int i, unsigned int j) const; //Derive par rapport à j (X)
     glm::vec2 getGradient(unsigned int i, unsigned int j) const;
     void setLayersColors(int layer, float color[]);
+    std::vector<glm::vec3> getLayersColors();
     std::vector<glm::uvec2> getAllLowNeighbors(unsigned int i, unsigned int j, bool connexity8) const;
     void thermalErosionA(float thetaLimit,float erosionCoeff,float dt, bool neighbourReceiver, bool descentDirection, bool typeErosion, bool connexity8);
     void thermalErosionB(float thetaLimit, float erosionCoeff, float dt, bool connexity8);
     void applyNThermalErosion(unsigned int N, float thetaLimit, float erosionCoeff, float dt, bool neighbourReceiver, bool descentDirection, bool typeErosion, bool connexity8, bool strategyB);
     void applyFault(const int& mode, const int& n_iter);
+    std::vector<std::string> getLayersFileNames();
 
 
 private:
@@ -158,6 +160,7 @@ private:
     glm::vec2 m_gridBottomRightCorner;
     float m_cellWidth = 0;
     float m_cellHeight = 0;
+    std::vector<std::string> m_layersFileNames;
     std::vector<float> m_layersThickness;
     std::vector<glm::vec3> m_layersColor;
 
@@ -281,6 +284,14 @@ void Mesh::setLayersColors(int layer, float color[]) {
     m_layersColor[layer] = glm::vec3(color[0], color[1], color[2]);
 
 }
+
+std::vector<std::string> Mesh::getLayersFileNames() {
+    return m_layersFileNames;
+};
+
+std::vector<glm::vec3> Mesh::getLayersColors() {
+    return m_layersColor;
+};
 
 
 void Mesh::render() {
@@ -452,7 +463,10 @@ Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec
     float emin = e.x;
     float emax = e.y;
 
+    m_layersFileNames = filenames;
+
     for (unsigned int k = 0; k < m_nbOfLayers; k = k + 1) {
+
         unsigned char* gray_img = loadHeightMapFromFile(filenames[k], width, height, channels);
 
         //Met a jour la taille de la grille avec la valeur de la première map
@@ -462,8 +476,6 @@ Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec
 
             m_cellWidth = abs(m_gridBottomRightCorner.x - m_gridTopLeftCorner.x) / (width - 1.f);
             m_cellHeight = abs(m_gridBottomRightCorner.y - m_gridTopLeftCorner.y) / (height - 1.f);
-
-            //std::cout << m_cellHeight << " " << m_cellHeight << std::endl;
 
             m_layersThickness.resize(m_nbOfLayers * m_gridWidth * m_gridHeight);
             m_vertexPositions.resize(3 * m_gridWidth * m_gridHeight);
@@ -1536,19 +1548,37 @@ void renderImGui() {
         mesh->init();
     }
 
-    static char str0[128] = "Hello, world!";
-    ImGui::InputText("input text", str0, IM_ARRAYSIZE(str0));
-    ImGui::SameLine(); 
-    ImGui::TextDisabled("(?)");
-    if (ImGui::IsItemHovered())
-    {
-        ImGui::BeginTooltip();
-        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
-        ImGui::TextUnformatted("dddd");
-        ImGui::PopTextWrapPos();
-        ImGui::EndTooltip();
-    }
+    if (ImGui::TreeNode("Colors")) {
 
+        static char heightMapName[255] = "Add heightmap";
+        ImGui::InputText("input text", heightMapName, IM_ARRAYSIZE(heightMapName));
+        static float colorAdd[] = { 255.f / 255.f, 255.f / 255.f, 255.f / 255.f };
+        ImGui::ColorEdit3("Color", colorAdd);
+
+        ImGui::TextDisabled("(?)");
+
+        if (ImGui::IsItemHovered())
+        {
+            ImGui::BeginTooltip();
+            ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
+            ImGui::TextUnformatted("dddd");
+            ImGui::PopTextWrapPos();
+            ImGui::EndTooltip();
+        }
+
+        if (ImGui::Button("Add")) {
+            std::vector<std::string> fileNames = mesh->getLayersFileNames();
+            //fileNames.push_back(heightMapName);
+            fileNames[1] = heightMapName;
+            std::vector<glm::vec3> colors = mesh->getLayersColors();
+            //colors.push_back(glm::vec3(colorAdd[0], colorAdd[1], colorAdd[2]));
+            colors[1] = glm::vec3(colorAdd[0], colorAdd[1], colorAdd[2]);
+            mesh = new Mesh(fileNames, colors, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
+            mesh->init();
+        }
+
+        ImGui::TreePop();
+    }
 
     ImGui::Spacing();
     ImGui::Spacing();
