@@ -791,7 +791,7 @@ void Mesh::thermalErosionA(float thetaLimit, float erosionCoeff, float dt, bool 
                 }
 
                 //on erode si on est pas le layer le plus bas ou de l'eau
-                if ((layerIndexCurrentCell > 0) && (layerIndexCurrentCell < m_nbOfLayers - 1)) {
+                if (layerIndexCurrentCell > 0) {
                     
 
                     float newThicknessCurrentCell = getLayerThickness(layerIndexCurrentCell, i, j) + dh;
