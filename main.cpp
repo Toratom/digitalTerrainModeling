@@ -58,12 +58,15 @@ int g_connexity_t = 0; // 4 connexité
 int g_descentDirection_t = 0; //Heighest gradient
 int g_typeGradient_t = 0; //Heighest gradient
 int g_neighbourReceiver_t = 0; //all neighbors
-unsigned int g_nbOfItrations_t = 0;
+unsigned int g_nbOfIterations_t = 1;
+unsigned int g_nbOfIterations_t_max = 1;
 
 //Fault parameters
 int g_fault_mode = 2;
 int g_fault_niter = 1;
-unsigned int g_fault_nbOfIterations = 0;
+int g_fault_circlemode = 0;
+unsigned int g_fault_nbOfIterations = 1;
+unsigned int g_fault_nbOfIterations_max = 1;
 
 GLFWwindow* g_window2 = nullptr;
 
@@ -994,78 +997,113 @@ void Mesh::applyFault(const int& mode, const int& n_iter) {
 
     for (int k = 0; k < n_iterf; k++) {
 
-        v = rand();
-        a = cos(v);
-        b = sin(v);
+        if (g_fault_circlemode < 1) {
 
-        c = (cos(rand()) / 2.f + 0.5f) * d - d / 2.f;
-        
-        switch (mode) {
-        case 0:
-            dy = 0.05f;
-            break;
+            v = rand();
+            a = cos(v);
+            b = sin(v);
 
-        case 1:
-            if (k < n_iterf) {
-                dy = dy0 + ((float ) k / n_iterf) * (dyn / dy0);
-            }
-            else {
-                dy = dyn;
-            }
-            break;
+            //c = (cos(rand()) / 2.f + 0.5f) * d - d / 2.f;
+            c = ((float)rand() / RAND_MAX) * d - d / 2.0f;
 
-        default:
-            dy = 0.1f;
-        }
+            switch (mode) {
+            case 0:
+                dy = 0.05f;
+                break;
 
-        for (int i = 0; i < m_gridHeight; i++) {
-            for (int j = 0; j < m_gridWidth; j++) {
-
-                src_index = j + m_gridWidth * i;
-                dist = (float) (a * (float) i + b * (float) j - c) / d;
-
-                if (mode == 2) {
-                    dy = atan(dist / (float) 10.f) * 10.f;
-                    //dy = dist / (float) 10.f;
-
-                    if (true) {
-                        std::cout << d << " " << dist << std::endl;
-                    }
-
-                } else if (mode == 3) {
-                    dy = exp(-(pow(dist, 2)) / 10.f) * 0.001f;
-
-                } else if (mode == 4) {
-                    dy = -exp(-(dist) / 10.f) * 0.001f;
-
-                } else if (mode == 5) {
-                    if (dist < w) {
-                        dy = cos((dist * 3.14f / w - 3.14)) * 0.1f;
-
-                    } else {
-                        dy = 0;
-                    }
+            case 1:
+                if (k < n_iterf) {
+                    dy = dy0 + ((float)k / n_iterf) * (dyn / dy0);
                 }
+                else {
+                    dy = dyn;
+                }
+                break;
 
-                if (mode < 2) {
-                    if (a * i + b * j > c) {
+            default:
+                dy = 0.1f;
+            }
 
-                        mesh->setLayerThickness(mesh->getLayerThickness(1, i, j) + dy, 1, i, j);
+            for (int i = 0; i < m_gridHeight; i++) {
+                for (int j = 0; j < m_gridWidth; j++) {
+
+                    src_index = j + m_gridWidth * i;
+                    //dist = (float) (a * (float) i + b * (float) j - c) / d;
+                    dist = a * i + b * j - c;
+
+                    if (mode == 2) {
+                        dy = atan(dist) * 0.064f;
+                        //dy = dist / (float) 10.f;
+
+                        if (false) {
+                            std::cout << dy << " " << dist << std::endl;
+                        }
+
+                    }
+                    else if (mode == 3) {
+                        dy = exp(-(pow(dist, 2)) / 10.f) * 0.1f;
+
+                    }
+                    else if (mode == 4) {
+                        dy = -exp(-(pow(dist, 2)) / 10.f) * 0.1f;
+
+                    }
+                    else if (mode == 5) {
+                        dy = (1.f - exp(-(dist) / 10.f)) * 0.1f;
+
+                    }
+                    else if (mode == 6) {
+                        if (dist < w) {
+                            dy = cos((dist * 3.14f / w - 3.14)) * 0.1f;
+
+                        }
+                        else {
+                            dy = 0;
+                        }
+                    }
+
+                    if (mode < 2) {
+                        if (a * i + b * j > c) {
+
+                            mesh->setLayerThickness(mesh->getLayerThickness(1, i, j) + dy, 1, i, j);
+                        }
+                        else {
+                            mesh->setLayerThickness(mesh->getLayerThickness(1, i, j) - dy, 1, i, j);
+                        }
+
                     }
                     else {
-                        mesh->setLayerThickness(mesh->getLayerThickness(1, i, j) - dy, 1, i, j);
+                        mesh->setLayerThickness(mesh->getLayerThickness(1, i, j) + dy, 1, i, j);
+
                     }
 
-                } else {
-                    mesh->setLayerThickness(mesh->getLayerThickness(1, i, j) + dy, 1, i, j);
+                    //std::cout << a * i + b * j - c << std::endl;
 
+
+                    //std::cout << dy << std::endl;
                 }
+                //std::cout << i << " " << 0 << " " << (float) heightMap[src_index] << " " << (a * i > c) << std::endl;
 
-
-                //std::cout << dy << std::endl;
             }
-            //std::cout << i << " " << 0 << " " << (float) heightMap[src_index] << " " << (a * i > c) << std::endl;
-            
+        }
+        else {
+
+            dy = 0.3f;
+
+            int randX = rand() % (m_gridWidth + 1);
+            int randZ = rand() % (m_gridHeight + 1);
+            int randCircSize = rand() % ((m_gridWidth + m_gridHeight) / 10); // circle diameter
+            for (int i = 0; i < m_gridHeight; i++) {
+                for (int j = 0; j < m_gridWidth; j++) {
+                    float pd = sqrt((randX - j) * (randX - j) + (randZ - i) * (randZ - i)) * 2.0f / randCircSize; // pd = distanceFromCircle*2/size
+                    if (fabs(pd) <= 1.0f) { // if the vertex is within the circle, displace it upwards
+                        float diff = (dy / 2.0f + cos(pd * 3.14f) * dy / 2.0f);
+                        mesh->setLayerThickness(mesh->getLayerThickness(1, i, j) + diff, 1, i, j);
+
+                        //terrain[z][x] += (terrain[z][x] + diff > maxHeight) ? 0 : diff; // constrain to maxHeight
+                    }
+                }
+            }
         }
         //std::cout << c << " " << a << std::endl;
     }
@@ -1308,8 +1346,11 @@ void renderImGui() {
     ImGui::Spacing();
 
     if (ImGui::Button("Start thermal erosion")) {
-        g_nbOfItrations_t = g_iter_t;
+        g_nbOfIterations_t = g_iter_t;
+        g_nbOfIterations_t_max = g_iter_t;
     }
+
+    ImGui::ProgressBar(1.f - g_nbOfIterations_t / (float) g_nbOfIterations_t_max, ImVec2(0, 20));
 
     if (ImGui::TreeNode("Parameters")) {
 
@@ -1430,6 +1471,7 @@ void renderImGui() {
         //mesh->applyFault(g_fault_mode, g_fault_niter);
         //mesh->init();
         g_fault_nbOfIterations = g_fault_niter;
+        g_fault_nbOfIterations_max = g_fault_niter;
     }
 
     if (ImGui::TreeNode("Parameters fault algorithm")) {
@@ -1457,7 +1499,13 @@ void renderImGui() {
         if (ImGui::RadioButton("Mode0", &g_fault_mode, 0)) {
         }
 
-        //ImGui::SliderFloat("Theta", &g_thetaLimit_t, 0, PI / 2);
+        if (ImGui::RadioButton("Line", &g_fault_circlemode, 0)) {
+        }
+        ImGui::SameLine();
+
+        if (ImGui::RadioButton("Circle", &g_fault_circlemode, 1)) {
+        }
+        ImGui::ProgressBar(1.f - g_fault_nbOfIterations / (float) g_fault_nbOfIterations_max, ImVec2(0, 20));
         ImGui::SliderInt("Number of iterations", &g_fault_niter, 1, 1000);
 
         ImGui::TreePop();
@@ -1471,7 +1519,8 @@ void renderImGui() {
     ImGui::Spacing();
 
     if (ImGui::Button("Restart")) {
-        g_nbOfItrations_t = 0;
+        g_nbOfIterations_t = 1;
+        g_fault_nbOfIterations = 1;
         mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
         mesh->init();
     }
@@ -1591,9 +1640,9 @@ int main(int argc, char ** argv) {
     init(); // Your initialization code (user interface, OpenGL states, scene with geometry, material, lights, etc)
 
     while(!glfwWindowShouldClose(g_window)) {
-        if (g_nbOfItrations_t > 0) {
+        if (g_nbOfIterations_t > 0) {
             mesh->applyNThermalErosion(1, g_thetaLimit_t, g_erosionCoeff_t, g_dt_t, g_neighbourReceiver_t, g_descentDirection_t, g_typeErosion_t, g_connexity_t, g_strategyErosion_t);
-            g_nbOfItrations_t -= 1;
+            g_nbOfIterations_t -= 1;
         }
 
         if (g_fault_nbOfIterations > 0) {
