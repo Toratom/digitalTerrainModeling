@@ -785,16 +785,18 @@ void Mesh::thermalErosionA(float thetaLimit, float erosionCoeff, float dt, bool 
 
                 float dh = -erosionCoeff * (slope -tangentLimit) * dt; //<=0
 
+                float currentThickness = newLayersThickness[layerIndexCurrentCell * m_gridHeight * m_gridWidth + i * m_gridWidth + j];
+
                 //Si dh est plus grand que l'epaisseur du layer
-                if (-dh > getLayerThickness(layerIndexCurrentCell, i, j)) {
-                    dh = -getLayerThickness(layerIndexCurrentCell, i, j);
+                if (-dh > currentThickness) {
+                    dh = -currentThickness;
                 }
 
                 //on erode si on est pas le layer le plus bas ou de l'eau
-                if ((layerIndexCurrentCell > 0) && (layerIndexCurrentCell < m_nbOfLayers - 1)) {
+                if (layerIndexCurrentCell > 0) {
                     
-
-                    float newThicknessCurrentCell = getLayerThickness(layerIndexCurrentCell, i, j) + dh;
+                    
+                    float newThicknessCurrentCell = currentThickness + dh;
 
                     newLayersThickness[layerIndexCurrentCell * m_gridHeight * m_gridWidth + i * m_gridWidth + j] = (newThicknessCurrentCell > 0) ? newThicknessCurrentCell : 0.f;
                     
@@ -1532,7 +1534,7 @@ void renderImGui() {
     if (ImGui::Button("Restart")) {
         g_nbOfIterations_t = 1;
         g_fault_nbOfIterations = 1;
-        mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
+        mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png", "../data/simpleB.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
         mesh->init();
     }
 
@@ -1617,9 +1619,7 @@ void init() {
     initOpenGL();
     //mesh = new Mesh({ "../data/heightmap5.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f)}, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 1.f)); //cpu
     //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png", "../data/simpleB.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
-    mesh = new Mesh({ "../data/simpleB.png", "../data/sand-with-water.png","../data/water-around-sand.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
-    //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
-    initGPUprogram();
+    mesh = new Mesh({ "../data/simpleB.png", "../data/sand-with-water.png","../data/water-around-sand.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu    initGPUprogram();
     //g_sunID = loadTextureFromFileToGPU("../data/heightmap3.jpg");
     mesh->init(); //gpu
     initCamera();
