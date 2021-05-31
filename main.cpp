@@ -1508,11 +1508,25 @@ void renderImGui() {
     ImGui::Spacing();
 
     if (ImGui::Button("Restart")) {
-        g_nbOfIterations_t = 1;
-        g_fault_nbOfIterations = 1;
+        g_nbOfIterations_t = 0;
+        g_fault_nbOfIterations = 0;
         mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
         mesh->init();
     }
+
+    static char str0[128] = "Hello, world!";
+    ImGui::InputText("input text", str0, IM_ARRAYSIZE(str0));
+    ImGui::SameLine(); 
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered())
+    {
+        ImGui::BeginTooltip();
+        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
+        ImGui::TextUnformatted("dddd");
+        ImGui::PopTextWrapPos();
+        ImGui::EndTooltip();
+    }
+
 
     ImGui::Spacing();
     ImGui::Spacing();
