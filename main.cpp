@@ -60,6 +60,11 @@ int g_typeGradient_t = 0; //Heighest gradient
 int g_neighbourReceiver_t = 0; //all neighbors
 unsigned int g_nbOfItrations_t = 0;
 
+//Fault parameters
+int g_fault_mode = 2;
+int g_fault_niter = 1;
+unsigned int g_fault_nbOfIterations = 0;
+
 GLFWwindow* g_window2 = nullptr;
 
 // GPU objects
@@ -118,12 +123,13 @@ glm::vec3 g_baseRot(0.0);
 class Mesh {
 public:
     Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec3> layersColor, const glm::vec4& corners, const glm::vec2& e);
-    Mesh(const int nbOfLayers, const int width, const int height, const std::vector<glm::vec3> layersColor, const glm::vec4& corners, const glm::vec2& e);
+    Mesh(const int nbOfLayers, const int width, const int height, const int mode, const std::vector<glm::vec3> layersColor, const glm::vec4& corners, const glm::vec2& e);
 
     void init(); //Génère la surface à partir des différentes épaisseur de niveau, ces normales, puis envoie l'info au GPU
     void render();
     unsigned int getIndex(unsigned int k, unsigned int i, unsigned int j);
-    float getH(unsigned int i, unsigned int j) const; //Pour avoir la hauteur issue des différentes epaisseurs des layers au point (i,j) de la grille
+    float getH(unsigned int i, unsigned int j) const; //Donne la hauteur du terrain eau comprise
+    float getTerrainH(unsigned int i, unsigned int j) const; //Pour avoir la hauteur issue des différentes epaisseurs des layers au point (i,j) de la grille
     float getLayerThickness(unsigned int k, unsigned int i, unsigned int j) const;
     float getLayerH(unsigned int k, unsigned int i, unsigned int j) const;
     void setLayerThickness(float value, unsigned int k, unsigned int i, unsigned int j);
@@ -137,6 +143,7 @@ public:
     void thermalErosionA(float thetaLimit,float erosionCoeff,float dt, bool neighbourReceiver, bool descentDirection, bool typeErosion, bool connexity8);
     void thermalErosionB(float thetaLimit, float erosionCoeff, float dt, bool connexity8);
     void applyNThermalErosion(unsigned int N, float thetaLimit, float erosionCoeff, float dt, bool neighbourReceiver, bool descentDirection, bool typeErosion, bool connexity8, bool strategyB);
+    void applyFault(const int& mode, const int& n_iter);
 
 
 private:
@@ -161,7 +168,7 @@ private:
     GLuint m_normalVbo = 0;
     GLuint m_ibo = 0;
     GLuint m_colVbo = 0;
-    unsigned char* Mesh::createHeightMapFault(const int& width, const int& height, const int& mode);
+    unsigned char* Mesh::createHeightMapFault(const int& width, const int& height, const int& mode, const int& n_iter);
     unsigned char* loadHeightMapFromFile(const std::string& filename, int& width, int& height, int& channels);
 };
 
@@ -195,7 +202,7 @@ void Mesh::init() {
             m_vertexColors[ind] = color.x;
             ind += 1;
 
-            m_vertexPositions[ind] = getH(i, j); //y
+            m_vertexPositions[ind] = getTerrainH(i, j); //y
             m_vertexNormals[ind] = normal.y;
             m_vertexColors[ind] = color.y;
             ind += 1;
@@ -290,25 +297,27 @@ void Mesh::render() {
     glDrawElements(GL_TRIANGLES, m_triangleIndices.size(), GL_UNSIGNED_INT, 0); // Call for rendering: stream the current GPU geometry through the current GPU program
 }
 
-unsigned char* Mesh::createHeightMapFault(const int& width, const int& height, const int& mode) {
+unsigned char* Mesh::createHeightMapFault(const int& width, const int& height, const int& mode, const int& n_iter) {
 
     size_t map_size = width * height;
     unsigned char * heightMap = (unsigned char*) malloc(map_size);
 
     for (unsigned char * p = heightMap, *pg = heightMap; p != heightMap + map_size; p += 1, pg += 1) {
-        *pg = (unsigned char) 0;
+        *pg = (unsigned char) 115;
     }
 
     float d = sqrt(width * width + height * height);
-    float dy = 5.f;
+    float dy;
     int src_index;
-    float n_iter = (float) 100;
+    float n_iterf = (float) n_iter;
     float dy0 = 0.1f;
     float dyn = 1.f;
     float v, a, b, c;
+    float dist;
+    float w = 10.f;
 
 
-    for (int k = 0; k < n_iter; k++) {
+    for (int k = 0; k < n_iterf; k++) {
 
         v = rand();
         a = cos(v);
@@ -319,12 +328,12 @@ unsigned char* Mesh::createHeightMapFault(const int& width, const int& height, c
 
         switch (mode) {
             case 0:
-                dy = 5.f;
+                dy = 0.f;
                 break;
 
             case 1:
-                if (k < n_iter) {
-                    dy = dy0 + (k / n_iter) * (dyn / dy0);
+                if (k < n_iterf) {
+                    dy = dy0 + (k / n_iterf) * (dyn / dy0);
                 }
                 else {
                     dy = dyn;
@@ -332,35 +341,56 @@ unsigned char* Mesh::createHeightMapFault(const int& width, const int& height, c
                 break;
 
             default:
-                dy = 5.f;
+                dy = 1.f;
         }
-
-
 
         for (int i = 0; i < height; i++) {
             for (int j = 0; j < width; j++) {
 
                 src_index = j + width * i;
+                dist = (float) (a * i + b * j - c);
 
-                dy = atan((float) (a * i + b * j - c))*10.f;
+                if (mode == 2) {
+                    dy = atan(dist) * 10.f;
 
-                if (a * i + b * j > c) {
+                } else if (mode == 3) {
+                    dy = exp(- (pow(dist, 2)) / 10.f) * 10.f;
 
-                    if ((float) heightMap[src_index] < 256.f - dy) {
-                        heightMap[src_index] += (unsigned char) dy;
+                } else if (mode == 4) {
+                    dy = - exp(- (dist) / 10.f) * 10.f;
+
+                } else if (mode == 5) {
+                    if (dist < w) {
+                        //dy = cos((dist * 3.14f / w - 3.14f)) * 10.f;
+                        dy = cos((dist * 3.14f / w - 3.14)) * 10.f;
+
+                    } else {
+                        dy = 0;
                     }
                 }
 
+                if (a * i + b * j > c) {
+
+                    mesh->setLayerThickness(mesh->getLayerThickness(1, i, j) + dy, 1, i, j);
+
+                    //if ((float) heightMap[src_index] < 256.f - dy) {
+                        //heightMap[src_index] += (unsigned char) dy;
+                    //}
+                }
+
                 else {
-                    if ((float) heightMap[src_index] > dy) {
-                        heightMap[src_index] -= (unsigned char) dy;
-                    }
+                    //if ((float) heightMap[src_index] > dy) {
+                      //  heightMap[src_index] -= (unsigned char) dy;
+                    //}
+                    mesh->setLayerThickness(mesh->getLayerThickness(1, i, j) - dy, 1, i, j);
                 }
                     //std::cout << dy << std::endl;
             }
             //std::cout << i << " " << 0 << " " << (float) heightMap[src_index] << " " << (a * i > c) << std::endl;
         }
     }
+
+    //std::cout << " " << dy << " " << dist;
 
     return heightMap;
 }
@@ -474,7 +504,7 @@ Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec
     }
 }
 
-Mesh::Mesh(const int nbOfLayers, const int width, const int height, const std::vector<glm::vec3> layersColor, const glm::vec4& corners, const glm::vec2& e) {
+Mesh::Mesh(const int nbOfLayers, const int width, const int height, const int mode, const std::vector<glm::vec3> layersColor, const glm::vec4& corners, const glm::vec2& e) {
     m_nbOfLayers = nbOfLayers;
     m_layersColor = layersColor;
     m_gridTopLeftCorner = glm::vec2(corners.x, corners.y);
@@ -483,7 +513,7 @@ Mesh::Mesh(const int nbOfLayers, const int width, const int height, const std::v
     float emax = e.y;
 
     for (unsigned int k = 0; k < m_nbOfLayers; k = k + 1) {
-        unsigned char* gray_img = createHeightMapFault(width, height, 1);
+        unsigned char* gray_img = createHeightMapFault(width, height, g_fault_mode, g_fault_niter);
 
         //Met a jour la taille de la grille avec la valeur de la première map
         if (k == 0) {
@@ -567,12 +597,12 @@ glm::uvec2 Mesh::getLowestNeighbor(unsigned int i, unsigned int j) const {
     int lowestDI = -1;
     int lowestDJ = -1;
 
-    float lowestH = getH(i + lowestDI, j + lowestDJ);
+    float lowestH = getTerrainH(i + lowestDI, j + lowestDJ);
     float currentH = 0;
 
     for (int di = -1; di < 2; di += 1) {
         for (int dj = -1; dj < 2; dj += 1) {
-            currentH = getH(i + di, j + dj);
+            currentH = getTerrainH(i + di, j + dj);
             if (currentH < lowestH) {
                 lowestH = currentH;
                 lowestDI = di;
@@ -589,7 +619,7 @@ std::vector<glm::uvec2> Mesh::getAllLowNeighbors(unsigned int i, unsigned int j,
     // (jusqu'à la hauteur du pixel central)
 
     float currentH;
-    float hCenter = getH(i, j);
+    float hCenter = getTerrainH(i, j);
     std::vector<glm::uvec2> vectorOfLowNeighbors;
     
 
@@ -600,7 +630,7 @@ std::vector<glm::uvec2> Mesh::getAllLowNeighbors(unsigned int i, unsigned int j,
                 int nextJ = j + dj;
                 //on vérifie qu'on ne sort pas de la grille
                 if (nextI >= 0 && nextJ >= 0 && nextI < m_gridHeight && nextJ < m_gridWidth) {
-                    currentH = getH(nextI, nextJ);
+                    currentH = getTerrainH(nextI, nextJ);
                     if (currentH < hCenter) {
                         vectorOfLowNeighbors.push_back(glm::uvec2(nextI, nextJ));
                     }
@@ -620,7 +650,7 @@ std::vector<glm::uvec2> Mesh::getAllLowNeighbors(unsigned int i, unsigned int j,
                     int nextJ = j + dj;
                     //on vérifie qu'on ne sort pas de la grille
                     if (nextI >= 0 && nextJ >= 0 && nextI < m_gridHeight && nextJ < m_gridWidth) {
-                        currentH = getH(nextI, nextJ);
+                        currentH = getTerrainH(nextI, nextJ);
                         if (currentH < hCenter) {
                             vectorOfLowNeighbors.push_back(glm::uvec2(nextI, nextJ));
                         }
@@ -659,8 +689,18 @@ void Mesh::setLayerThickness(float value, unsigned int k, unsigned int i, unsign
 }
 
 float Mesh::getH(unsigned int i, unsigned int j) const {
+    //Donne la hauteur en un point avec l'eau comprise (pour hydraulic simulation)
     float h = 0;
     for (unsigned int k = 0; k < m_nbOfLayers; k = k + 1) {
+        h += getLayerThickness(k, i, j);
+    }
+    return h;
+}
+
+float Mesh::getTerrainH(unsigned int i, unsigned int j) const {
+    //Donne la hauteur en un point du terrain, dont exclu l'eau qui est par convention dans l'index m_nbOfLayers - 1 (pour thermal erosion)
+    float h = 0;
+    for (unsigned int k = 0; k < m_nbOfLayers - 1; k = k + 1) {
         h += getLayerThickness(k, i, j);
     }
     return h;
@@ -669,27 +709,27 @@ float Mesh::getH(unsigned int i, unsigned int j) const {
 float Mesh::getIDerivate(unsigned int i, unsigned int j) const {
     //On fait attention au bord
     if (i == 0) {
-        return (getH(i + 1, j) - getH(i, j)) / m_cellHeight;
+        return (getTerrainH(i + 1, j) - getTerrainH(i, j)) / m_cellHeight;
     }
     if (i == m_gridHeight - 1) {
-        return (getH(i, j) - getH(i - 1, j)) / m_cellHeight;
+        return (getTerrainH(i, j) - getTerrainH(i - 1, j)) / m_cellHeight;
     }
     
-    //return (getH(i, j) - getH(i - 1, j)) / m_cellHeight;
-    return (getH(i + 1, j) - getH(i - 1, j)) / (2.f * m_cellHeight);
+    //return (getTerrainH(i, j) - getTerrainH(i - 1, j)) / m_cellHeight;
+    return (getTerrainH(i + 1, j) - getTerrainH(i - 1, j)) / (2.f * m_cellHeight);
 }
 
 float Mesh::getJDerivate(unsigned int i, unsigned int j) const {
     //On fait attention au bord
     if (j == 0) {
-        return (getH(i, j + 1) - getH(i, j)) / m_cellWidth;
+        return (getTerrainH(i, j + 1) - getTerrainH(i, j)) / m_cellWidth;
     }
     if (j == m_gridWidth - 1) {
-        return (getH(i, j) - getH(i, j - 1)) / m_cellWidth;
+        return (getTerrainH(i, j) - getTerrainH(i, j - 1)) / m_cellWidth;
     }
 
-    //return (getH(i, j) - getH(i, j - 1)) / m_cellWidth;
-    return (getH(i, j + 1) - getH(i, j - 1)) / (2.f * m_cellWidth);
+    //return (getTerrainH(i, j) - getTerrainH(i, j - 1)) / m_cellWidth;
+    return (getTerrainH(i, j + 1) - getTerrainH(i, j - 1)) / (2.f * m_cellWidth);
 }
 
 glm::vec2 Mesh::getGradient(unsigned int i, unsigned int j) const {
@@ -722,7 +762,7 @@ void Mesh::thermalErosionA(float thetaLimit, float erosionCoeff, float dt, bool 
                 int newLayerIndex;
                 //Si la matière s'érode et donne du sable
                 if (typeErosion != 0) {
-                    newLayerIndex = m_nbOfLayers - 1; //Modifier le -1 quand on rajoutera de l'eau à -2
+                    newLayerIndex = m_nbOfLayers - 2;
                 }
                 //La matière érodée donne la même matière
                 else {
@@ -736,8 +776,8 @@ void Mesh::thermalErosionA(float thetaLimit, float erosionCoeff, float dt, bool 
                     dh = -getLayerThickness(layerIndexCurrentCell, i, j);
                 }
 
-                //on erode si on est pas le layer le plus bas
-                if (layerIndexCurrentCell > 0) {
+                //on erode si on est pas le layer le plus bas ou de l'eau
+                if ((layerIndexCurrentCell > 0) && (layerIndexCurrentCell < m_nbOfLayers - 1)) {
                     
 
                     float newThicknessCurrentCell = getLayerThickness(layerIndexCurrentCell, i, j) + dh;
@@ -770,7 +810,7 @@ void Mesh::thermalErosionA(float thetaLimit, float erosionCoeff, float dt, bool 
 
                         //Etude du cas (26, 34) de qui il recoit de la matiere (i == 26 && j == 34) || (i == 27 && j == 34) || (i == 26 && j == 33) || (i == 26 && j == 35) || (i == 27 && j == 35)
                         //if ((i == 61 && j == 62) || (i == 36 && j == 37)) {
-                        //    if (getH(nextI, nextJ) > getH(i, j)) {
+                        //    if (getTerrainH(nextI, nextJ) > getTerrainH(i, j)) {
                         //        std::cout << "PB ";
                         //    }
                         //    std::cout << "i "<< i << " j " << j << " Dir - grad " << directionDescent.x << " " << directionDescent.y << -dh << " nextI " << nextI << " NextJ " << nextJ << std::endl;
@@ -802,7 +842,7 @@ void Mesh::thermalErosionA(float thetaLimit, float erosionCoeff, float dt, bool 
                             glm::uvec2 nextCell = vectorOfLowNeighbors.at(i);
                             nextI = nextCell.x; //pour obtenir la cellule i,j dans laquelle on atterit
                             nextJ = nextCell.y;
-                            sumOfDifferences += getH(i,j)-getH(nextI, nextJ);
+                            sumOfDifferences += getTerrainH(i,j)-getTerrainH(nextI, nextJ);
                         }
 
 
@@ -815,7 +855,7 @@ void Mesh::thermalErosionA(float thetaLimit, float erosionCoeff, float dt, bool 
                             
                             if (sumOfDifferences > 0) {
                                 //nextI et nextJ respectent déjà les conditions au bord (cf la fonction getAllLowNeighbors)
-                                newLayersThickness[newLayerIndex * m_gridHeight * m_gridWidth + nextI * m_gridWidth + nextJ] -= dh * (getH(i,j)-getH(nextI, nextJ)) / sumOfDifferences;
+                                newLayersThickness[newLayerIndex * m_gridHeight * m_gridWidth + nextI * m_gridWidth + nextJ] -= dh * (getTerrainH(i,j)-getTerrainH(nextI, nextJ)) / sumOfDifferences;
                             }
                             //sumOfDifferences vaut 0 si le pixel central n'a pas de voisins donc il reçoit juste toute la matière qu'il a perdu
                             else {
@@ -878,14 +918,14 @@ void Mesh::thermalErosionB(float thetaLimit, float erosionCoeff, float dt, bool 
         {
             topLayerIndexCurrentCell = getTopLayerId(i, j);
 
-            if (topLayerIndexCurrentCell > 0) { //Erosion il y a que si la roche afleurente n'est pas de la bedrock
+            if ((topLayerIndexCurrentCell > 0) && (topLayerIndexCurrentCell < m_nbOfLayers - 1)) { //Erosion il y a que si le layer afleurent n'est pas de la bedrock ni de l'eau
                 //On calcule les dH
                 dHOutTot = 0.f;
                 for (unsigned int k = 0; k < neighborTranslations.size(); k ++) {
                     nextCellI = i + neighborTranslations[k].x;
                     nextCellJ = j + neighborTranslations[k].y;
                     distanceToNextCell = sqrt(pow(m_cellHeight * neighborTranslations[k].x, 2) + pow(m_cellWidth * neighborTranslations[k].y, 2));
-                    dHOut[k] = std::max(0.f, erosionCoeff * ((getH(i, j) - getH(nextCellI, nextCellJ)) / distanceToNextCell - elevationLimit) * dt);
+                    dHOut[k] = std::max(0.f, erosionCoeff * ((getTerrainH(i, j) - getTerrainH(nextCellI, nextCellJ)) / distanceToNextCell - elevationLimit) * dt);
                     dHOutTot += dHOut[k];
                 }
 
@@ -930,6 +970,108 @@ void Mesh::applyNThermalErosion(unsigned int N, float thetaLimit, float erosionC
         }
     }
     
+}
+
+void Mesh::applyFault(const int& mode, const int& n_iter) {
+
+    /*size_t map_size = width * height;
+    unsigned char* heightMap = (unsigned char*)malloc(map_size);
+
+    for (unsigned char* p = heightMap, *pg = heightMap; p != heightMap + map_size; p += 1, pg += 1) {
+        *pg = (unsigned char)115;
+    }*/
+
+    float d = sqrt(m_gridWidth * m_gridWidth + m_gridHeight * m_gridHeight);
+    float dy;
+    int src_index;
+    float n_iterf = (float) n_iter;
+    float dy0 = 0.2f;
+    float dyn = 0.01f;
+    float v, a, b, c;
+    float dist;
+    float w = 10.f;
+
+
+    for (int k = 0; k < n_iterf; k++) {
+
+        v = rand();
+        a = cos(v);
+        b = sin(v);
+
+        c = (cos(rand()) / 2.f + 0.5f) * d - d / 2.f;
+        
+        switch (mode) {
+        case 0:
+            dy = 0.05f;
+            break;
+
+        case 1:
+            if (k < n_iterf) {
+                dy = dy0 + ((float ) k / n_iterf) * (dyn / dy0);
+            }
+            else {
+                dy = dyn;
+            }
+            break;
+
+        default:
+            dy = 0.1f;
+        }
+
+        for (int i = 0; i < m_gridHeight; i++) {
+            for (int j = 0; j < m_gridWidth; j++) {
+
+                src_index = j + m_gridWidth * i;
+                dist = (float) (a * (float) i + b * (float) j - c) / d;
+
+                if (mode == 2) {
+                    dy = atan(dist / (float) 10.f) * 10.f;
+                    //dy = dist / (float) 10.f;
+
+                    if (true) {
+                        std::cout << d << " " << dist << std::endl;
+                    }
+
+                } else if (mode == 3) {
+                    dy = exp(-(pow(dist, 2)) / 10.f) * 0.001f;
+
+                } else if (mode == 4) {
+                    dy = -exp(-(dist) / 10.f) * 0.001f;
+
+                } else if (mode == 5) {
+                    if (dist < w) {
+                        dy = cos((dist * 3.14f / w - 3.14)) * 0.1f;
+
+                    } else {
+                        dy = 0;
+                    }
+                }
+
+                if (mode < 2) {
+                    if (a * i + b * j > c) {
+
+                        mesh->setLayerThickness(mesh->getLayerThickness(1, i, j) + dy, 1, i, j);
+                    }
+                    else {
+                        mesh->setLayerThickness(mesh->getLayerThickness(1, i, j) - dy, 1, i, j);
+                    }
+
+                } else {
+                    mesh->setLayerThickness(mesh->getLayerThickness(1, i, j) + dy, 1, i, j);
+
+                }
+
+
+                //std::cout << dy << std::endl;
+            }
+            //std::cout << i << " " << 0 << " " << (float) heightMap[src_index] << " " << (a * i > c) << std::endl;
+            
+        }
+        //std::cout << c << " " << a << std::endl;
+    }
+
+    //std::cout << " " << mesh->getLayerThickness(1, 50, 50) << " " << dist;
+    mesh->init();
 }
 
 
@@ -1272,7 +1414,6 @@ void renderImGui() {
         //ImGui::SliderFloat("Dt", &dt_h, 0.000001f, 0.1f, "%f", ImGuiSliderFlags_Logarithmic);
         //ImGui::SliderInt("Number of iterations", &iter_h, 1, 1000);
         ImGui::TreePop();
-
         
     }*/
 
@@ -1283,20 +1424,65 @@ void renderImGui() {
     ImGui::Spacing();
 
     if (ImGui::Button("Fault Algorithm")) {
-        mesh = new Mesh(2, 100, 100, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 0.5f));
-        mesh->init();
+        //mesh = new Mesh(2, 100, 100, g_fault_mode, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 1.f));
+        //mesh->init();
+
+        //mesh->applyFault(g_fault_mode, g_fault_niter);
+        //mesh->init();
+        g_fault_nbOfIterations = g_fault_niter;
+    }
+
+    if (ImGui::TreeNode("Parameters fault algorithm")) {
+
+        if (ImGui::RadioButton("Mode5", &g_fault_mode, 5)) {
+        }
+        ImGui::SameLine();
+
+        if (ImGui::RadioButton("Mode4", &g_fault_mode, 4)) {
+        }
+        ImGui::SameLine();
+
+        if (ImGui::RadioButton("Mode3", &g_fault_mode, 3)) {
+        }
+        ImGui::SameLine();
+
+        if (ImGui::RadioButton("Mode2", &g_fault_mode, 2)) {
+        }
+        ImGui::SameLine();
+
+        if (ImGui::RadioButton("Mode1", &g_fault_mode, 1)) {
+        }
+        ImGui::SameLine();
+
+        if (ImGui::RadioButton("Mode0", &g_fault_mode, 0)) {
+        }
+
+        //ImGui::SliderFloat("Theta", &g_thetaLimit_t, 0, PI / 2);
+        ImGui::SliderInt("Number of iterations", &g_fault_niter, 1, 1000);
+
+        ImGui::TreePop();
     }
 
     ImGui::Spacing();
     ImGui::Spacing();
+    ImGui::Separator();
     ImGui::Spacing();
     ImGui::Spacing();
     ImGui::Spacing();
 
     if (ImGui::Button("Restart")) {
-        mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
+        g_nbOfItrations_t = 0;
+        mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
         mesh->init();
     }
+
+    ImGui::Spacing();
+    ImGui::Spacing();
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+    ImGui::Spacing();
+
 
     if (ImGui::TreeNode("Colors")) {
 
@@ -1330,7 +1516,7 @@ void renderImGui() {
 
     ImGui::Separator();
 
-    if (ImGui::TreeNode("Range Widgets"))
+    /*if (ImGui::TreeNode("Range Widgets"))
     {
         static float begin = 10, end = 90;
         static int begin_i = 100, end_i = 1000;
@@ -1338,7 +1524,7 @@ void renderImGui() {
         ImGui::DragIntRange2("range int", &begin_i, &end_i, 5, 0, 1000, "Min: %d units", "Max: %d units");
         ImGui::DragIntRange2("range int (no bounds)", &begin_i, &end_i, 5, 0, 0, "Min: %d units", "Max: %d units");
         ImGui::TreePop();
-    }
+    }*/
 
     ImGui::Separator();
 
@@ -1369,8 +1555,8 @@ void init() {
   initGLFW();
   initOpenGL();
   //mesh = new Mesh({ "../data/heightmap5.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f)}, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 1.f)); //cpu
-  mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png" }, { glm::vec3(120.f/255.f, 135.f/255.f, 124.f/255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
-  //mesh = new Mesh(2, 100, 100, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.5f));
+  mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png", "../data/simpleB.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
+  //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu         
   initGPUprogram();
   //g_sunID = loadTextureFromFileToGPU("../data/heightmap3.jpg");
   mesh->init(); //gpu
@@ -1405,10 +1591,16 @@ int main(int argc, char ** argv) {
     init(); // Your initialization code (user interface, OpenGL states, scene with geometry, material, lights, etc)
 
     while(!glfwWindowShouldClose(g_window)) {
-        if (g_nbOfItrations_t > 1) {
+        if (g_nbOfItrations_t > 0) {
             mesh->applyNThermalErosion(1, g_thetaLimit_t, g_erosionCoeff_t, g_dt_t, g_neighbourReceiver_t, g_descentDirection_t, g_typeErosion_t, g_connexity_t, g_strategyErosion_t);
             g_nbOfItrations_t -= 1;
         }
+
+        if (g_fault_nbOfIterations > 0) {
+            mesh->applyFault(g_fault_mode, 1);            
+            g_fault_nbOfIterations -= 1;
+        }
+
         render();
         renderImGui();
 
