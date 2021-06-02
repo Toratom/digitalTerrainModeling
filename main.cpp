@@ -58,14 +58,14 @@ int g_connexity_t = 0; // 4 connexité
 int g_descentDirection_t = 0; //Heighest gradient
 int g_typeGradient_t = 0; //Heighest gradient
 int g_neighbourReceiver_t = 0; //all neighbors
-unsigned int g_nbOfIterations_t = 1;
+unsigned int g_nbOfIterations_t = 0;
 unsigned int g_nbOfIterations_t_max = 1;
 
 //Fault parameters
 int g_fault_mode = 2;
 int g_fault_niter = 1;
 int g_fault_circlemode = 0;
-unsigned int g_fault_nbOfIterations = 1;
+unsigned int g_fault_nbOfIterations = 0;
 unsigned int g_fault_nbOfIterations_max = 1;
 
 GLFWwindow* g_window2 = nullptr;
@@ -143,11 +143,13 @@ public:
     float getJDerivate(unsigned int i, unsigned int j) const; //Derive par rapport à j (X)
     glm::vec2 getGradient(unsigned int i, unsigned int j) const;
     void setLayersColors(int layer, float color[]);
+    std::vector<glm::vec3> getLayersColors();
     std::vector<glm::uvec2> getAllLowNeighbors(unsigned int i, unsigned int j, bool connexity8) const;
     void thermalErosionA(float thetaLimit,float erosionCoeff,float dt, bool neighbourReceiver, bool descentDirection, bool typeErosion, bool connexity8);
     void thermalErosionB(float thetaLimit, float erosionCoeff, float dt, bool connexity8);
     void applyNThermalErosion(unsigned int N, float thetaLimit, float erosionCoeff, float dt, bool neighbourReceiver, bool descentDirection, bool typeErosion, bool connexity8, bool strategyB);
     void applyFault(const int& mode, const int& n_iter);
+    std::vector<std::string> getLayersFileNames();
 
 
 private:
@@ -158,6 +160,7 @@ private:
     glm::vec2 m_gridBottomRightCorner;
     float m_cellWidth = 0;
     float m_cellHeight = 0;
+    std::vector<std::string> m_layersFileNames;
     std::vector<float> m_layersThickness;
     std::vector<glm::vec3> m_layersColor;
 
@@ -281,6 +284,14 @@ void Mesh::setLayersColors(int layer, float color[]) {
     m_layersColor[layer] = glm::vec3(color[0], color[1], color[2]);
 
 }
+
+std::vector<std::string> Mesh::getLayersFileNames() {
+    return m_layersFileNames;
+};
+
+std::vector<glm::vec3> Mesh::getLayersColors() {
+    return m_layersColor;
+};
 
 
 void Mesh::render() {
@@ -452,7 +463,10 @@ Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec
     float emin = e.x;
     float emax = e.y;
 
+    m_layersFileNames = filenames;
+
     for (unsigned int k = 0; k < m_nbOfLayers; k = k + 1) {
+
         unsigned char* gray_img = loadHeightMapFromFile(filenames[k], width, height, channels);
 
         //Met a jour la taille de la grille avec la valeur de la première map
@@ -462,8 +476,6 @@ Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec
 
             m_cellWidth = abs(m_gridBottomRightCorner.x - m_gridTopLeftCorner.x) / (width - 1.f);
             m_cellHeight = abs(m_gridBottomRightCorner.y - m_gridTopLeftCorner.y) / (height - 1.f);
-
-            //std::cout << m_cellHeight << " " << m_cellHeight << std::endl;
 
             m_layersThickness.resize(m_nbOfLayers * m_gridWidth * m_gridHeight);
             m_vertexPositions.resize(3 * m_gridWidth * m_gridHeight);
@@ -506,6 +518,7 @@ Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec
             m_vertexTexCoords.push_back(float(i) / (height - 1)); //y
         }
     }
+
 }
 
 Mesh::Mesh(const int nbOfLayers, const int width, const int height, const int mode, const std::vector<glm::vec3> layersColor, const glm::vec4& corners, const glm::vec2& e) {
@@ -515,6 +528,7 @@ Mesh::Mesh(const int nbOfLayers, const int width, const int height, const int mo
     m_gridBottomRightCorner = glm::vec2(corners.z, corners.w);
     float emin = e.x;
     float emax = e.y;
+    
 
     for (unsigned int k = 0; k < m_nbOfLayers; k = k + 1) {
         unsigned char* gray_img = createHeightMapFault(width, height, g_fault_mode, g_fault_niter);
@@ -570,6 +584,7 @@ Mesh::Mesh(const int nbOfLayers, const int width, const int height, const int mo
             m_vertexTexCoords.push_back(float(i)); //y
         }
     }
+    
 }
 
 unsigned int Mesh::getTopLayerId(unsigned int i, unsigned int j) const {
@@ -752,12 +767,13 @@ glm::vec2 Mesh::getGradient(unsigned int i, unsigned int j) const {
 
 
 void Mesh::thermalErosionA(float thetaLimit, float erosionCoeff, float dt, bool neighbourReceiver, bool descentDirection, bool typeErosion, bool connexity8) {
+    std::cout << "Thermal Erosion A" << std::endl;
     float tangentLimit = glm::tan(thetaLimit);
     std::vector<float> newLayersThickness = m_layersThickness; //vecteur mémoire temporaire
     //neigbourReceiver = 0 : tous les voisins plus bas recoivent dh, 1 : voisin dans la direction de descente
     //descentDirection = 0 : gradient direction, 1 : lowest neighbour
     //typeErosion = 1 : L'érosion donne du sable, 0 : l'érosion donne le même layer (et passe sous le sable)
-
+    
     for (unsigned int i = 0; i < m_gridHeight; i++) {
         for (unsigned int j = 0; j < m_gridWidth; j++)
         {
@@ -784,7 +800,7 @@ void Mesh::thermalErosionA(float thetaLimit, float erosionCoeff, float dt, bool 
 
                 float dh = -erosionCoeff * (slope -tangentLimit) * dt; //<=0
 
-                float currentThickness = newLayersThickness[layerIndexCurrentCell * m_gridHeight * m_gridWidth + i * m_gridWidth + j];
+                float currentThickness = getLayerThickness(layerIndexCurrentCell, i, j);// newLayersThickness[layerIndexCurrentCell * m_gridHeight * m_gridWidth + i * m_gridWidth + j];
 
                 //Si dh est plus grand que l'epaisseur du layer
                 if (-dh > currentThickness) {
@@ -973,6 +989,7 @@ void Mesh::thermalErosionB(float thetaLimit, float erosionCoeff, float dt, bool 
 }
 
 void Mesh::applyNThermalErosion(unsigned int N, float thetaLimit, float erosionCoeff, float dt, bool neighbourReceiver, bool descentDirection, bool typeErosion, bool connexity8, bool strategyB) {
+    
     if (strategyB) {
         for (unsigned int i = 0; i < N; i += 1) {
             thermalErosionB(thetaLimit, erosionCoeff, dt, connexity8);
@@ -982,6 +999,7 @@ void Mesh::applyNThermalErosion(unsigned int N, float thetaLimit, float erosionC
         for (unsigned int i = 0; i < N; i += 1) {
             thermalErosionA(thetaLimit, erosionCoeff, dt, neighbourReceiver, descentDirection, typeErosion, connexity8);
             
+
         }
     }
     
@@ -1531,10 +1549,43 @@ void renderImGui() {
     ImGui::Spacing();
 
     if (ImGui::Button("Restart")) {
+
         g_nbOfIterations_t = 1;
         g_fault_nbOfIterations = 1;
         mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png", "../data/simpleB.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
         mesh->init();
+    }
+
+    if (ImGui::TreeNode("Colors")) {
+
+        static char heightMapName[255] = "Add heightmap";
+        ImGui::InputText("input text", heightMapName, IM_ARRAYSIZE(heightMapName));
+        static float colorAdd[] = { 255.f / 255.f, 255.f / 255.f, 255.f / 255.f };
+        ImGui::ColorEdit3("Color", colorAdd);
+
+        ImGui::TextDisabled("(?)");
+
+        if (ImGui::IsItemHovered())
+        {
+            ImGui::BeginTooltip();
+            ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
+            ImGui::TextUnformatted("dddd");
+            ImGui::PopTextWrapPos();
+            ImGui::EndTooltip();
+        }
+
+        if (ImGui::Button("Add")) {
+            std::vector<std::string> fileNames = mesh->getLayersFileNames();
+            //fileNames.push_back(heightMapName);
+            fileNames[1] = heightMapName;
+            std::vector<glm::vec3> colors = mesh->getLayersColors();
+            //colors.push_back(glm::vec3(colorAdd[0], colorAdd[1], colorAdd[2]));
+            colors[1] = glm::vec3(colorAdd[0], colorAdd[1], colorAdd[2]);
+            mesh = new Mesh(fileNames, colors, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
+            mesh->init();
+        }
+
+        ImGui::TreePop();
     }
 
     ImGui::Spacing();
@@ -1617,8 +1668,8 @@ void init() {
     initGLFW();
     initOpenGL();
     //mesh = new Mesh({ "../data/heightmap5.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f)}, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 1.f)); //cpu
-    //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png", "../data/simpleB.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
-    mesh = new Mesh({ "../data/simpleB.png", "../data/sand-with-water.png","../data/water-around-sand.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu    initGPUprogram();
+    mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png", "../data/simpleB.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
+    //mesh = new Mesh({ "../data/simpleB.png", "../data/sand-with-water.png","../data/water-around-sand.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu    initGPUprogram();
     //g_sunID = loadTextureFromFileToGPU("../data/heightmap3.jpg");
     mesh->init(); //gpu
     initCamera();
@@ -1660,8 +1711,9 @@ int main(int argc, char ** argv) {
         if (g_fault_nbOfIterations > 0) {
             mesh->applyFault(g_fault_mode, 1);            
             g_fault_nbOfIterations -= 1;
+            std::cout << "Test" << std::endl;
         }
-
+        std::cout << "TestB" << std::endl;
         render();
         renderImGui();
 
