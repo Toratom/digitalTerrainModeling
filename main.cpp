@@ -1602,14 +1602,6 @@ void renderImGui() {
                 mesh = new Mesh(fileNames, colors, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
                 mesh->init();
             }
-
-            if (FILE* file = fopen(((std::string) heightMapName).c_str(), "r")) {
-
-            }
-            else {
-                std::cout << "nope";
-
-            }
         }
 
         ImGui::TreePop();
