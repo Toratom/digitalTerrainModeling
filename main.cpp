@@ -413,7 +413,7 @@ unsigned char* Mesh::createHeightMapFault(const int& width, const int& height, c
 
 
 unsigned char* Mesh::loadHeightMapFromFile(const std::string& filename, int& width, int& height, int& channels) {
-    
+
     unsigned char* heightMap = stbi_load(
         filename.c_str(),
         &width, &height,
@@ -767,7 +767,7 @@ glm::vec2 Mesh::getGradient(unsigned int i, unsigned int j) const {
 
 
 void Mesh::thermalErosionA(float thetaLimit, float erosionCoeff, float dt, bool neighbourReceiver, bool descentDirection, bool typeErosion, bool connexity8) {
-    std::cout << "Thermal Erosion A" << std::endl;
+    
     float tangentLimit = glm::tan(thetaLimit);
     std::vector<float> newLayersThickness = m_layersThickness; //vecteur mémoire temporaire
     //neigbourReceiver = 0 : tous les voisins plus bas recoivent dh, 1 : voisin dans la direction de descente
@@ -1668,8 +1668,8 @@ void init() {
     initGLFW();
     initOpenGL();
     //mesh = new Mesh({ "../data/heightmap5.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f)}, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 1.f)); //cpu
-    mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png", "../data/simpleB.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
-    //mesh = new Mesh({ "../data/simpleB.png", "../data/sand-with-water.png","../data/water-around-sand.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu    initGPUprogram();
+    //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png", "../data/simpleB.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
+    mesh = new Mesh({ "../data/simpleB.png", "../data/sand-with-water.png","../data/water-around-sand.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu    initGPUprogram();
     //g_sunID = loadTextureFromFileToGPU("../data/heightmap3.jpg");
     mesh->init(); //gpu
     initCamera();
@@ -1711,9 +1711,8 @@ int main(int argc, char ** argv) {
         if (g_fault_nbOfIterations > 0) {
             mesh->applyFault(g_fault_mode, 1);            
             g_fault_nbOfIterations -= 1;
-            std::cout << "Test" << std::endl;
         }
-        std::cout << "TestB" << std::endl;
+
         render();
         renderImGui();
 
