@@ -413,7 +413,7 @@ unsigned char* Mesh::createHeightMapFault(const int& width, const int& height, c
 
 
 unsigned char* Mesh::loadHeightMapFromFile(const std::string& filename, int& width, int& height, int& channels) {
-    
+
     unsigned char* heightMap = stbi_load(
         filename.c_str(),
         &width, &height,
@@ -518,6 +518,7 @@ Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec
             m_vertexTexCoords.push_back(float(i) / (height - 1)); //y
         }
     }
+
 }
 
 Mesh::Mesh(const int nbOfLayers, const int width, const int height, const int mode, const std::vector<glm::vec3> layersColor, const glm::vec4& corners, const glm::vec2& e) {
@@ -527,6 +528,7 @@ Mesh::Mesh(const int nbOfLayers, const int width, const int height, const int mo
     m_gridBottomRightCorner = glm::vec2(corners.z, corners.w);
     float emin = e.x;
     float emax = e.y;
+    
 
     for (unsigned int k = 0; k < m_nbOfLayers; k = k + 1) {
         unsigned char* gray_img = createHeightMapFault(width, height, g_fault_mode, g_fault_niter);
@@ -582,6 +584,7 @@ Mesh::Mesh(const int nbOfLayers, const int width, const int height, const int mo
             m_vertexTexCoords.push_back(float(i)); //y
         }
     }
+    
 }
 
 unsigned int Mesh::getTopLayerId(unsigned int i, unsigned int j) const {
@@ -764,13 +767,13 @@ glm::vec2 Mesh::getGradient(unsigned int i, unsigned int j) const {
 
 
 void Mesh::thermalErosionA(float thetaLimit, float erosionCoeff, float dt, bool neighbourReceiver, bool descentDirection, bool typeErosion, bool connexity8) {
+    
     float tangentLimit = glm::tan(thetaLimit);
     std::vector<float> newLayersThickness = m_layersThickness; //vecteur mémoire temporaire
     //neigbourReceiver = 0 : tous les voisins plus bas recoivent dh, 1 : voisin dans la direction de descente
     //descentDirection = 0 : gradient direction, 1 : lowest neighbour
     //typeErosion = 1 : L'érosion donne du sable, 0 : l'érosion donne le même layer (et passe sous le sable)
-
-
+    
     for (unsigned int i = 0; i < m_gridHeight; i++) {
         for (unsigned int j = 0; j < m_gridWidth; j++)
         {
@@ -797,7 +800,7 @@ void Mesh::thermalErosionA(float thetaLimit, float erosionCoeff, float dt, bool 
 
                 float dh = -erosionCoeff * (slope -tangentLimit) * dt; //<=0
 
-                float currentThickness = getLayerThickness(layerIndexCurrentCell, i, j);
+                float currentThickness = getLayerThickness(layerIndexCurrentCell, i, j);// newLayersThickness[layerIndexCurrentCell * m_gridHeight * m_gridWidth + i * m_gridWidth + j];
 
                 //Si dh est plus grand que l'epaisseur du layer
                 if (-dh > currentThickness) {
@@ -807,11 +810,10 @@ void Mesh::thermalErosionA(float thetaLimit, float erosionCoeff, float dt, bool 
                 //on erode si on est pas le layer le plus bas ou de l'eau
                 if (layerIndexCurrentCell > 0) {
                     
-
                     float newThicknessCurrentCell = currentThickness + dh;
 
                     newLayersThickness[layerIndexCurrentCell * m_gridHeight * m_gridWidth + i * m_gridWidth + j] = (newThicknessCurrentCell > 0) ? newThicknessCurrentCell : 0.f;
-                    
+
                     //On donne la matière à un voisin (dans la direction de descente)
                     if (neighbourReceiver!=0) {
                         //std::cout << "Un seul voisin reçoit la matière" << std::endl;
@@ -987,6 +989,7 @@ void Mesh::thermalErosionB(float thetaLimit, float erosionCoeff, float dt, bool 
 }
 
 void Mesh::applyNThermalErosion(unsigned int N, float thetaLimit, float erosionCoeff, float dt, bool neighbourReceiver, bool descentDirection, bool typeErosion, bool connexity8, bool strategyB) {
+    
     if (strategyB) {
         for (unsigned int i = 0; i < N; i += 1) {
             thermalErosionB(thetaLimit, erosionCoeff, dt, connexity8);
@@ -995,6 +998,8 @@ void Mesh::applyNThermalErosion(unsigned int N, float thetaLimit, float erosionC
     else {
         for (unsigned int i = 0; i < N; i += 1) {
             thermalErosionA(thetaLimit, erosionCoeff, dt, neighbourReceiver, descentDirection, typeErosion, connexity8);
+            
+
         }
     }
     
@@ -1544,9 +1549,9 @@ void renderImGui() {
     ImGui::Spacing();
 
     if (ImGui::Button("Restart")) {
-        g_nbOfIterations_t = 0;
-        g_fault_nbOfIterations = 0;
-        std::cout << "test" << std::endl;
+
+        g_nbOfIterations_t = 1;
+        g_fault_nbOfIterations = 1;
         mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png", "../data/simpleB.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
         mesh->init();
     }
@@ -1686,13 +1691,12 @@ void initImGui() {
 }
 
 void init() {
+
     initGLFW();
     initOpenGL();
     //mesh = new Mesh({ "../data/heightmap5.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f)}, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 1.f)); //cpu
     //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png", "../data/simpleB.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
-    mesh = new Mesh({ "../data/simpleB.png", "../data/sand-with-water.png","../data/water-around-sand.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
-    //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
-    initGPUprogram();
+    mesh = new Mesh({ "../data/simpleB.png", "../data/sand-with-water.png","../data/water-around-sand.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu    initGPUprogram();
     //g_sunID = loadTextureFromFileToGPU("../data/heightmap3.jpg");
     mesh->init(); //gpu
     initCamera();
