@@ -1556,9 +1556,11 @@ void renderImGui() {
         mesh->init();
     }
 
-    if (ImGui::TreeNode("Colors")) {
+    int layerNb = 1;
 
-        static char heightMapName[255] = "Add heightmap";
+    if (ImGui::TreeNode("Layers")) {
+
+        static char heightMapName[255] = "../data/simpleB.png";
         ImGui::InputText("input text", heightMapName, IM_ARRAYSIZE(heightMapName));
         static float colorAdd[] = { 255.f / 255.f, 255.f / 255.f, 255.f / 255.f };
         ImGui::ColorEdit3("Color", colorAdd);
@@ -1574,15 +1576,40 @@ void renderImGui() {
             ImGui::EndTooltip();
         }
 
+        if (ImGui::RadioButton("Layer 0", &layerNb, 0)) {
+        }
+        ImGui::SameLine();
+
+        if (ImGui::RadioButton("Layer 1", &layerNb, 1)) {
+        }
+        ImGui::SameLine();
+
+        if (ImGui::RadioButton("Layer 2", &layerNb, 2)) {
+        }
+
         if (ImGui::Button("Add")) {
-            std::vector<std::string> fileNames = mesh->getLayersFileNames();
-            //fileNames.push_back(heightMapName);
-            fileNames[1] = heightMapName;
-            std::vector<glm::vec3> colors = mesh->getLayersColors();
-            //colors.push_back(glm::vec3(colorAdd[0], colorAdd[1], colorAdd[2]));
-            colors[1] = glm::vec3(colorAdd[0], colorAdd[1], colorAdd[2]);
-            mesh = new Mesh(fileNames, colors, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
-            mesh->init();
+
+            int width, height, channels;
+
+            unsigned char* heightMap = stbi_load(
+                ((std::string) heightMapName).c_str(),
+                &width, &height,
+                &channels, 
+                0);
+
+            if (heightMap == NULL) {
+                printf("Error in loading the height map image.\n");
+
+            } else {
+                std::vector<std::string> fileNames = mesh->getLayersFileNames();
+                //fileNames.push_back(heightMapName);
+                fileNames[layerNb] = heightMapName;
+                std::vector<glm::vec3> colors = mesh->getLayersColors();
+                //colors.push_back(glm::vec3(colorAdd[0], colorAdd[1], colorAdd[2]));
+                colors[layerNb] = glm::vec3(colorAdd[0], colorAdd[1], colorAdd[2]);
+                mesh = new Mesh(fileNames, colors, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
+                mesh->init();
+            }
         }
 
         ImGui::TreePop();
