@@ -810,7 +810,7 @@ void Mesh::thermalErosionA(float thetaLimit, float erosionCoeff, float dt, bool 
 
                     float newThicknessCurrentCell = currentThickness + dh;
 
-                    newLayersThickness[layerIndexCurrentCell * m_gridHeight * m_gridWidth + i * m_gridWidth + j] = (newThicknessCurrentCell > 0) ? newThicknessCurrentCell : 0.f;
+                    newLayersThickness[layerIndexCurrentCell * m_gridHeight * m_gridWidth + i * m_gridWidth + j] =  newThicknessCurrentCell;
                     
                     //On donne la matière à un voisin (dans la direction de descente)
                     if (neighbourReceiver!=0) {
@@ -1499,6 +1499,8 @@ void renderImGui() {
         g_fault_nbOfIterations_max = g_fault_niter;
     }
 
+    ImGui::ProgressBar(1.f - g_fault_nbOfIterations / (float)g_fault_nbOfIterations_max, ImVec2(0, 20));
+
     if (ImGui::TreeNode("Parameters fault algorithm")) {
 
         if (ImGui::RadioButton("Mode5", &g_fault_mode, 5)) {
@@ -1530,7 +1532,6 @@ void renderImGui() {
 
         if (ImGui::RadioButton("Circle", &g_fault_circlemode, 1)) {
         }
-        ImGui::ProgressBar(1.f - g_fault_nbOfIterations / (float) g_fault_nbOfIterations_max, ImVec2(0, 20));
         ImGui::SliderInt("Number of iterations", &g_fault_niter, 1, 1000);
 
         ImGui::TreePop();
@@ -1546,7 +1547,6 @@ void renderImGui() {
     if (ImGui::Button("Restart")) {
         g_nbOfIterations_t = 0;
         g_fault_nbOfIterations = 0;
-        std::cout << "test" << std::endl;
         mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png", "../data/simpleB.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
         mesh->init();
     }
@@ -1602,7 +1602,7 @@ void renderImGui() {
                 std::vector<glm::vec3> colors = mesh->getLayersColors();
                 //colors.push_back(glm::vec3(colorAdd[0], colorAdd[1], colorAdd[2]));
                 colors[layerNb] = glm::vec3(colorAdd[0], colorAdd[1], colorAdd[2]);
-                mesh = new Mesh(fileNames, colors, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
+                mesh = new Mesh(fileNames, colors, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
                 mesh->init();
             }
         }
