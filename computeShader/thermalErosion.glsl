@@ -1,25 +1,8 @@
-#version 430
-
-//#extension GL_ARB_compute_shader : enable
-//#extension GL_ARB_shader_storage_buffer_object : enable
-
-//Shader dans le cas terrain à 1 layer
-
-#define NB_OF_LAYERS 1 //Faire la même chose pour les water props
-#define PATCH_HEIGHT 32
-#define PATCH_WIDTH 32
-//ATTENTION doit etre coherent avec les defines dans main.cpp
-
-//Ce sont des interface block i.e. une interface qui permet de regrouper plusieurs variable GPU, par exemple on regroupe ici dans le tableau (buffer) ThicknessR des floats
-//Il faut preciser comment sont rangees les donnes dans le block, le stride qui les separe (i.e. comment sont ranges les floats dans le buffer ou les uns à la suite des autres
-//un float puis du padding pour avoir la taille d'un vec4 puis un autre float). Pour preciser la convention utiliser pour ranger les donnes dans le block on utilise layout(...)
-//Le deuxieme exemple correspond à std140... ?
-//On appelle membre les elements à l'interieure du block (dans notre cas des floats).
-layout(std430, binding = 0) buffer readonly ThickR { //avec std140 pb car stride de 4 donc avant on ecrivait dans le padding !?
+layout(std430, binding = 0) readonly buffer ThickR { //avec std140 pb car stride de 4 donc avant on ecrivait dans le padding !?
 	float ThicknessR[][NB_OF_LAYERS]; //Faire la même chose pour les water props, utiliser des arrays d'array
 };
 
-layout(std430, binding = 1) buffer writeonly ThickW {
+layout(std430, binding = 1) writeonly buffer ThickW {
 	float ThicknessW[][NB_OF_LAYERS];
 };
 
@@ -48,8 +31,6 @@ float getHeight(int i, int j) {
 }
 
 void main() {
-	//Pour test flou gaussien
-	//const float sig = 2.0;
 	const int kSize = 5; //Mettre un nb impair !!
 	const int halfKSize = (kSize - 1) / 2;
 

@@ -45,6 +45,7 @@
 
 #define PATCH_HEIGHT 32
 #define PATCH_WIDTH 32
+#define NB_OF_LAYERS 1
 unsigned int g_nbGroupsX = 0;
 unsigned int g_nbGroupsY = 0;
 
@@ -59,9 +60,10 @@ GLFWwindow* g_window2 = nullptr;
 //GPU objects - Program
 GLuint g_program = 0; // A GPU program contains at least a vertex shader and a fragment shader
 GLuint g_computeProgram = 0; //GPU program for compute shader
+GLuint g_computeNormalsProgram = 0;
 //GPU objects - Buffers
 //GLuint g_colVbo = 0;
-//GLuint g_terrainNormalVbo = 0; //Normale au sol calculer par un compute shader
+GLuint g_terrainNormalsVbo = 0; //Normale au sol calculer par un compute shader
 GLuint g_gridPosVbo = 0; //Un vbo qui donne le z (i) et x (j) des points de la grille
 GLuint g_terrainLayersHeightVboR = 0; //b0(i,j), b1(i,j), ..., bNbOfLayers(i,j) ... Donne l'epaisseur des différents layers AU MAX 4 LAYERS (sans compter l'eau)
 GLuint g_terrainLayersHeightVboW = 0; //R aura le role de t et W de t + dt (puis swap) : en pratique on lit dans celui pointé par R et on écrit dans celui pointé par W
@@ -226,7 +228,11 @@ void Mesh::render() {
     //std::cout << "R " << g_terrainLayersHeightVboR << std::endl;
     glBindBuffer(GL_ARRAY_BUFFER, g_terrainLayersHeightVboR);
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 1 * sizeof(GLfloat), 0); //Pour plus de layer faire un shader par layer et load le bon dans initGPUPrograms
+    glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 1 * sizeof(GLfloat), 0); //Pour plus de layer faire un shader par layer et load le bon dans initGPUPrograms, plus complexe car faut somme des epaisseur... ajouter un shader qui fait ça ?
+
+    glBindBuffer(GL_ARRAY_BUFFER, g_terrainNormalsVbo);
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), 0); //Attention ici normal en vec4 cf explication dans verxterShader
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_ibo);
 
@@ -281,6 +287,10 @@ unsigned char* Mesh::loadHeightMapFromFile(const std::string& filename, int& wid
 Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec3> layersColor, const glm::vec4& corners, const glm::vec2& e) {
     int width = 0, height = 0, channels = 0;
     m_nbOfLayers = filenames.size();
+    if (m_nbOfLayers != NB_OF_LAYERS) {
+        std::cout << "ERROR : wrong nb of layer should correpond to NB_OF_LAYERS = " << NB_OF_LAYERS  << std::endl;
+        exit(1);
+    }
     m_layersColor = layersColor;
     m_gridTopLeftCorner = glm::vec2(corners.x, corners.y);
     m_gridBottomRightCorner = glm::vec2(corners.z, corners.w);
@@ -332,7 +342,7 @@ Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec
         //Verfier que bonne dim
         if (width != m_gridWidth || height != m_gridHeight) {
             std::cout << "ERROR : wrong size" << std::endl;
-            break;
+            exit(1);
         }
 
         for (int i = 0; i < height; i++) {
@@ -632,19 +642,18 @@ void CheckGlErrors(std::string caller) {
 }
 
 // Loads and compile a shader, before attaching it to a program
-void loadShader(GLuint program, GLenum type, const std::string &shaderFilename) {
+void loadShader(GLuint program, GLenum type, const std::string &shaderSourceString, const std::string &shaderName) {
     int status = 0;
     int logLength = 0;
     GLuint shader = glCreateShader(type); // Create the shader, e.g., a vertex shader to be applied to every single vertex of a mesh
-    std::string shaderSourceString = file2String(shaderFilename); // Loads the shader source from a file to a C++ string
     const GLchar *shaderSource = (const GLchar *)shaderSourceString.c_str(); // Interface the C++ string through a C pointer
     glShaderSource(shader, 1, &shaderSource, NULL); // load the vertex shader code
     glCompileShader(shader);
-    CheckGlErrors(shaderFilename + " 1");
+    CheckGlErrors(shaderName + " 1");
 
     glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
     if (status == GL_FALSE) {
-        std::cout << "Shader compilation failed : " << shaderFilename << std::endl;
+        std::cout << "Shader compilation failed : " << shaderName << std::endl;
         glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &logLength);
         GLchar* log = new GLchar[logLength];
         glGetShaderInfoLog(shader, logLength, NULL, log);
@@ -653,7 +662,7 @@ void loadShader(GLuint program, GLenum type, const std::string &shaderFilename) 
         exit(1);
     }
 
-    CheckGlErrors(shaderFilename + " 2");
+    CheckGlErrors(shaderName + " 2");
     glAttachShader(program, shader);
     glDeleteShader(shader);
 }
@@ -661,13 +670,16 @@ void loadShader(GLuint program, GLenum type, const std::string &shaderFilename) 
 void initGPUprograms() {
     int status = 0;
     int logLength = 0;
+    std::string  shaderSourceString;
+
     //Programm for Vertex and Fragment Shaders
     g_program = glCreateProgram(); // Create a GPU program, i.e., two central shaders of the graphics pipeline
-    loadShader(g_program, GL_VERTEX_SHADER, "../vertexShader.glsl");
-    loadShader(g_program, GL_FRAGMENT_SHADER, "../fragmentShader.glsl");
+    shaderSourceString = file2String("../vertexShader.glsl"); // Loads the shader source from a file to a C++ string
+    loadShader(g_program, GL_VERTEX_SHADER, shaderSourceString, "Vertex Shader");
+    shaderSourceString = file2String("../fragmentShader.glsl");
+    loadShader(g_program, GL_FRAGMENT_SHADER, shaderSourceString, "Fragment Shader");
     glLinkProgram(g_program); // The main GPU program is ready to be handle streams of polygons
     CheckGlErrors("Shader Program 1");
-
     glGetProgramiv(g_program, GL_LINK_STATUS, &status);
     if (status == GL_FALSE)
     {
@@ -679,16 +691,20 @@ void initGPUprograms() {
         delete[] log;
         exit(1);
     }
-
     CheckGlErrors("Shader Program 2");
 
 
     //Programm for compute shader
     g_computeProgram = glCreateProgram();
-    loadShader(g_computeProgram, GL_COMPUTE_SHADER, "../computeShader.glsl");
+    shaderSourceString = file2String("../computeShader/movingAverage.glsl");
+    //Ajout de l'entête
+    std::string computeShaderHeader = std::string("#version 430 \n #define NB_OF_LAYERS ") + std::to_string(NB_OF_LAYERS)
+        + std::string("\n #define PATCH_HEIGHT ") + std::to_string(PATCH_HEIGHT)
+        + std::string("\n #define PATCH_WIDTH ") + std::to_string(PATCH_WIDTH) + std::string("\n");
+    shaderSourceString = computeShaderHeader + shaderSourceString;
+    loadShader(g_computeProgram, GL_COMPUTE_SHADER, shaderSourceString, "Moving Average");
     glLinkProgram(g_computeProgram);
     CheckGlErrors("Compute Shader 1");
-
     glGetProgramiv(g_computeProgram, GL_LINK_STATUS, &status);
     if (status == GL_FALSE)
     {
@@ -700,8 +716,29 @@ void initGPUprograms() {
         delete[] log;
         exit(1);
     }
-
     CheckGlErrors("Compute Shader 2");
+
+    //Program for computing normals
+    g_computeNormalsProgram = glCreateProgram();
+    shaderSourceString = file2String("../computeShader/computeNormals.glsl");
+    //Ajout de l'entête
+    shaderSourceString = computeShaderHeader + shaderSourceString;
+    loadShader(g_computeNormalsProgram, GL_COMPUTE_SHADER, shaderSourceString, "Normals Computing");
+    glLinkProgram(g_computeNormalsProgram);
+    CheckGlErrors("Compute Normals Shader 1");
+    glGetProgramiv(g_computeNormalsProgram, GL_LINK_STATUS, &status);
+    if (status == GL_FALSE)
+    {
+        std::cout << "Link failed Compute Normals Shader" << std::endl;
+        glGetProgramiv(g_computeNormalsProgram, GL_INFO_LOG_LENGTH, &logLength);
+        GLchar* log = new GLchar[logLength];
+        glGetProgramInfoLog(g_computeNormalsProgram, logLength, NULL, log);
+        std::cout << "Log (len) " << logLength << " : " << log << std::endl;
+        delete[] log;
+        exit(1);
+    }
+    CheckGlErrors("Compute Normals Shader 2");
+
 
     //Calcul des dims de l'espace d'invocation
     g_nbGroupsX = (mesh->getGridHeight() + PATCH_HEIGHT - 1) / PATCH_HEIGHT;
@@ -716,11 +753,24 @@ void initBuffersAndUniforms() {
     GLint loc = glGetUniformLocation(g_computeProgram, "gridHeight");
     if (loc == -1) std::cout << "ERROR WITH UNIFORM gridHeight" << std::endl;
     glUniform1ui(loc, mesh->getGridHeight());
-    //glUniform1i(loc, 100);
     loc = glGetUniformLocation(g_computeProgram, "gridWidth");
     if (loc == -1) std::cout << "ERROR WITH UNIFORM gridWidth" << std::endl;
-    //glUniform1i(loc, 100);
     glUniform1ui(loc, mesh->getGridWidth());
+    glUseProgram(0);
+
+    glUseProgram(g_computeNormalsProgram); //Il faut "bind" le program afin de pouvoir set des variables uniforme avec glUniform...
+    loc = glGetUniformLocation(g_computeNormalsProgram, "gridHeight");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM gridHeight" << std::endl;
+    glUniform1ui(loc, mesh->getGridHeight());
+    loc = glGetUniformLocation(g_computeNormalsProgram, "gridWidth");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM gridWidth" << std::endl;
+    glUniform1ui(loc, mesh->getGridWidth());
+    loc = glGetUniformLocation(g_computeNormalsProgram, "cellHeight");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM cellHeight" << std::endl;
+    glUniform1f(loc, mesh->getCellHeight());
+    loc = glGetUniformLocation(g_computeNormalsProgram, "cellWidth");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM cellWidth" << std::endl;
+    glUniform1f(loc, mesh->getCellWidth());
     glUseProgram(0);
 
     std::cout << "---INIT UNIFORMS DONE---" << std::endl;
@@ -759,6 +809,11 @@ void initBuffersAndUniforms() {
     glCreateBuffers(1, &g_terrainLayersHeightVboW);
     glBindBuffer(GL_ARRAY_BUFFER, g_terrainLayersHeightVboW);
     glBufferStorage(GL_ARRAY_BUFFER, vertexBufferSize, terrainPropsTmp.data(), 0);
+
+    vertexBufferSize = 4 * sizeof(float) * mesh->getGridHeight() * mesh->getGridWidth();
+    glCreateBuffers(1, &g_terrainNormalsVbo);
+    glBindBuffer(GL_ARRAY_BUFFER, g_terrainNormalsVbo);
+    glBufferStorage(GL_ARRAY_BUFFER, vertexBufferSize, NULL, 0);
 
     //g_waterPropsVbo = 0; //d, s, fL, fR, fT, fB, u, v
 
@@ -915,7 +970,7 @@ int main(int argc, char ** argv) {
     init(); // Your initialization code (user interface, OpenGL states, scene with geometry, material, lights, etc)
 
     GLuint swapBuff = 0;
-    unsigned int nbOfIt = 100000;
+    unsigned int nbOfIt = 10000;
     while(!glfwWindowShouldClose(g_window)) {
         if (nbOfIt > 0) {
             //Phase de calculs :
@@ -926,13 +981,20 @@ int main(int argc, char ** argv) {
             //Appelle au compute shader
             glDispatchCompute(g_nbGroupsX, g_nbGroupsY, 1); //Dimension 2D de l'espace d'invocation x correspond à i et y à j
             glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-            //std::cout << " X : " << g_nbGroupsX << " Y : " << g_nbGroupsY << std::endl;
-
 
             //Swap les buffer R et W
             swapBuff = g_terrainLayersHeightVboR;
             g_terrainLayersHeightVboR = g_terrainLayersHeightVboW;
             g_terrainLayersHeightVboW = swapBuff;
+
+            //Update des normales
+            glUseProgram(g_computeNormalsProgram);
+            //Bind les buffer du compute shader :
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, g_terrainLayersHeightVboR);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, g_terrainNormalsVbo);
+            //Appelle au compute shader
+            glDispatchCompute(g_nbGroupsX, g_nbGroupsY, 1); //Dimension 2D de l'espace d'invocation x correspond à i et y à j
+            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
             nbOfIt -= 1;
         }
