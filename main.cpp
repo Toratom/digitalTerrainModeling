@@ -937,17 +937,22 @@ void Mesh::applyNThermalErosion(unsigned int N, float thetaLimit, float erosionC
 }*/
 
 void Mesh::setLayersFlux(float value, unsigned int k, unsigned int i, unsigned int j) {
-    if (value < 0) {
+    if (value < 0.f) {
         value = 0.f;
     }
 
     switch (k) {
-    case 0: m_layersFlux[i * m_gridWidth + j].x = value;
-    case 1: m_layersFlux[i * m_gridWidth + j].y = value;
-    case 2: m_layersFlux[i * m_gridWidth + j].z = value;
-    case 3: m_layersFlux[i * m_gridWidth + j].w = value;
-
-    default:
+    case 0: 
+        m_layersFlux[i * m_gridWidth + j].x = value;
+        break;
+    case 1: 
+        m_layersFlux[i * m_gridWidth + j].y = value;
+        break;
+    case 2: 
+        m_layersFlux[i * m_gridWidth + j].z = value;
+        break;
+    case 3: 
+        m_layersFlux[i * m_gridWidth + j].w = value;
         break;
     }
 }
@@ -960,7 +965,6 @@ glm::vec4 Mesh::getLayersFlux(unsigned int i, unsigned int j) {
     if (j >= m_gridWidth) j = m_gridWidth - 1;
     
     return m_layersFlux[i * m_gridWidth + j];
-
 }
 
 void Mesh::setLayersFlux(glm::vec4 values, unsigned int i, unsigned int j) {
@@ -1771,10 +1775,10 @@ int main(int argc, char ** argv) {
         }
 
         if (g_nbOfIterations_h > 0) {
-            mesh->hydraulicErosion(100);
+            mesh->hydraulicErosion(1); //J'ai mis à 1 pour avoir une iteration par frame c'est plus smooth
             g_nbOfIterations_h -= 1;
         }
-
+        
         render();
         renderImGui();
 
