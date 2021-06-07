@@ -142,9 +142,9 @@ public:
     unsigned int getTopLayerId(unsigned int i, unsigned int j) const; //Id de 0 à m_nbOfLayers - 1 correspond à indice dans m_layersColor
     unsigned int getTerrainTopLayerId(unsigned int i, unsigned int j) const; //Id de 0 à m_nbOfLayers - 2 correspond on exclu l'eau
     glm::uvec2 getLowestNeighbor(unsigned int i, unsigned int j) const;
-    float getIDerivate(unsigned int i, unsigned int j) const; //Dervive par rapport à i c'est à dire quand passe de ligne i à ligne i + 1 (Z)
-    float getJDerivate(unsigned int i, unsigned int j) const; //Derive par rapport à j (X)
-    glm::vec2 getGradient(unsigned int i, unsigned int j) const;
+    float getIDerivate(unsigned int i, unsigned int j, bool withWater) const; //Dervive par rapport à i c'est à dire quand passe de ligne i à ligne i + 1 (Z)
+    float getJDerivate(unsigned int i, unsigned int j, bool withWater) const; //Derive par rapport à j (X)
+    glm::vec2 getGradient(unsigned int i, unsigned int j, bool withWater) const;
     void setLayersColors(int layer, float color[]);
     std::vector<glm::vec3> getLayersColors();
     std::vector<glm::uvec2> getAllLowNeighbors(unsigned int i, unsigned int j, bool connexity8) const;
@@ -204,7 +204,7 @@ void Mesh::init() {
     unsigned int ind = 0;
     for (int i = 0; i < m_gridHeight; i++) {
         for (int j = 0; j < m_gridWidth; j++) {//On calcule les vecteurs normaux, en utilisant le gradient de la fonction d'élévation
-            grad = getGradient(i, j);
+            grad = getGradient(i, j, true); //Met a true car affiche l'eau
             normal = glm::normalize(glm::vec3(-grad.y, 1, -grad.x)); //On fait attention bien mettre dans bon ordre i.e. derive par rapport à x, correspond à derive par rapport à j...
             color = m_layersColor[getTopLayerId(i, j)];
             //glm::vec2 gradN = (grad.x >0 && grad.y > 0) ? glm::normalize(grad) : grad;
@@ -231,38 +231,13 @@ void Mesh::init() {
         }
     }
 
-    //Init gpu
-    // Create a single handle that joins together attributes (vertex positions,
-    // normals) and connectivity (triangles indices)
-    glCreateVertexArrays(1, &m_vao);
-    glBindVertexArray(m_vao);
-
-    // Generate a GPU buffer to store the positions of the vertices
     size_t vertexBufferSize = sizeof(float) * m_vertexPositions.size(); // Gather the size of the buffer from the CPU-side vector
-    glCreateBuffers(1, &m_posVbo);
-    glNamedBufferStorage(m_posVbo, vertexBufferSize, NULL, GL_DYNAMIC_STORAGE_BIT); // Create a data storage on the GPU
-    glNamedBufferSubData(m_posVbo, 0, vertexBufferSize, m_vertexPositions.data()); // Fill the data storage from a CPU array
-    glBindBuffer(GL_ARRAY_BUFFER, m_posVbo);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), 0);
-
-    //Buffer for normal
-    size_t vertexBufferSize2 = sizeof(float) * m_vertexNormals.size(); // Gather the size of the buffer from the CPU-side vector
-    glCreateBuffers(1, &m_normalVbo);
-    glNamedBufferStorage(m_normalVbo, vertexBufferSize2, NULL, GL_DYNAMIC_STORAGE_BIT); // Create a data storage on the GPU
-    glNamedBufferSubData(m_normalVbo, 0, vertexBufferSize2, m_vertexNormals.data()); // Fill the data storage from a CPU array
-    glBindBuffer(GL_ARRAY_BUFFER, m_normalVbo);
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), 0);
-
-    //Buffer for color
-    size_t vertexBufferSize3 = sizeof(float) * m_vertexColors.size(); // Gather the size of the buffer from the CPU-side vector
-    glCreateBuffers(1, &m_colVbo);
-    glNamedBufferStorage(m_colVbo, vertexBufferSize3, NULL, GL_DYNAMIC_STORAGE_BIT); // Create a data storage on the GPU
-    glNamedBufferSubData(m_colVbo, 0, vertexBufferSize3, m_vertexColors.data()); // Fill the data storage from a CPU array
-    glBindBuffer(GL_ARRAY_BUFFER, m_colVbo);
-    glEnableVertexAttribArray(2);
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), 0);
+    //Update buffer position
+    glNamedBufferSubData(m_posVbo, 0, vertexBufferSize, m_vertexPositions.data());
+    //Update buffer des normales
+    glNamedBufferSubData(m_normalVbo, 0, vertexBufferSize, m_vertexNormals.data());
+    //Update buffer des couleur
+    glNamedBufferSubData(m_colVbo, 0, vertexBufferSize, m_vertexColors.data());
 
     //Buffer for texture
     //size_t vertexBufferSize3 = sizeof(float) * m_vertexTexCoords.size(); // Gather the size of the buffer from the CPU-side vector
@@ -272,21 +247,6 @@ void Mesh::init() {
     //glBindBuffer(GL_ARRAY_BUFFER, m_texCoordsVbo);
     //glEnableVertexAttribArray(3);
     //glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), 0);
-
-    // Same for the index buffer that stores the list of indices of the
-    // triangles forming the mesh
-    size_t indexBufferSize = sizeof(unsigned int) * m_triangleIndices.size();
-    glCreateBuffers(1, &m_ibo);
-    glNamedBufferStorage(m_ibo, indexBufferSize, NULL, GL_DYNAMIC_STORAGE_BIT);
-    glNamedBufferSubData(m_ibo, 0, indexBufferSize, m_triangleIndices.data());
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_ibo); // bind the IBO storing geometry data
-
-    glBindVertexArray(0); // deactivate the VAO for now, will be activated at rendering time
-
-    //unsigned int fbo;
-    //glGenFramebuffers(1, &fbo);
-    //glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-
 }
 
 void Mesh::setLayersColors(int layer, float color[]) {
@@ -437,6 +397,53 @@ Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec
             //m_vertexTexCoords.push_back(float(i) / (height - 1)); //y
         }
     }*/
+
+    //Creation des buffers et création du vao
+    //Create a single handle that joins together attributes (vertex positions,
+    //normals) and connectivity (triangles indices)
+    glCreateVertexArrays(1, &m_vao);
+    glBindVertexArray(m_vao);
+
+    // Generate a GPU buffer to store the positions of the vertices
+    size_t vertexBufferSize = sizeof(float) * m_vertexPositions.size(); // Gather the size of the buffer from the CPU-side vector
+    glCreateBuffers(1, &m_posVbo);
+    glNamedBufferStorage(m_posVbo, vertexBufferSize, NULL, GL_DYNAMIC_STORAGE_BIT); // Create a data storage on the GPU
+    glBindBuffer(GL_ARRAY_BUFFER, m_posVbo);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), 0);
+
+    //Buffer for normal
+    glCreateBuffers(1, &m_normalVbo);
+    glNamedBufferStorage(m_normalVbo, vertexBufferSize, NULL, GL_DYNAMIC_STORAGE_BIT); // Create a data storage on the GPU
+    glBindBuffer(GL_ARRAY_BUFFER, m_normalVbo);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), 0);
+
+    //Buffer for color
+    glCreateBuffers(1, &m_colVbo);
+    glNamedBufferStorage(m_colVbo, vertexBufferSize, NULL, GL_DYNAMIC_STORAGE_BIT); // Create a data storage on the GPU
+    glBindBuffer(GL_ARRAY_BUFFER, m_colVbo);
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), 0);
+
+    //Buffer for texture
+    //size_t vertexBufferSize3 = sizeof(float) * m_vertexTexCoords.size(); // Gather the size of the buffer from the CPU-side vector
+    //glCreateBuffers(1, &m_texCoordsVbo);
+    //glNamedBufferStorage(m_texCoordsVbo, vertexBufferSize3, NULL, GL_DYNAMIC_STORAGE_BIT); // Create a data storage on the GPU
+    //glBindBuffer(GL_ARRAY_BUFFER, m_texCoordsVbo);
+    //glEnableVertexAttribArray(3);
+    //glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), 0);
+
+    // Same for the index buffer that stores the list of indices of the
+    // triangles forming the mesh
+    size_t indexBufferSize = sizeof(unsigned int) * m_triangleIndices.size();
+    glCreateBuffers(1, &m_ibo);
+    glNamedBufferStorage(m_ibo, indexBufferSize, NULL, GL_DYNAMIC_STORAGE_BIT);
+    glNamedBufferSubData(m_ibo, 0, indexBufferSize, m_triangleIndices.data());
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_ibo); // bind the IBO storing geometry data
+
+    glBindVertexArray(0);
+    glBindVertexArray(0);
 }
 
 /*Mesh::Mesh(const int nbOfLayers, const int width, const int height, const int mode, const std::vector<glm::vec3> layersColor, const glm::vec4& corners, const glm::vec2& e) {
@@ -651,34 +658,44 @@ float Mesh::getTerrainH(unsigned int i, unsigned int j) const {
     return h;
 }
 
-float Mesh::getIDerivate(unsigned int i, unsigned int j) const {
+float Mesh::getIDerivate(unsigned int i, unsigned int j, bool withWater) const {
+    auto computeH = &Mesh::getTerrainH;
+    if (withWater) {
+        computeH = &Mesh::getH;
+    }
+
     //On fait attention au bord
     if (i == 0) {
-        return (getTerrainH(i + 1, j) - getTerrainH(i, j)) / m_cellHeight;
+        return ((this->*computeH)(i + 1, j) - (this->*computeH)(i, j)) / m_cellHeight;
     }
     if (i == m_gridHeight - 1) {
-        return (getTerrainH(i, j) - getTerrainH(i - 1, j)) / m_cellHeight;
+        return ((this->*computeH)(i, j) - (this->*computeH)(i - 1, j)) / m_cellHeight;
     }
     
     //return (getTerrainH(i, j) - getTerrainH(i - 1, j)) / m_cellHeight;
-    return (getTerrainH(i + 1, j) - getTerrainH(i - 1, j)) / (2.f * m_cellHeight);
+    return ((this->*computeH)(i + 1, j) - (this->*computeH)(i - 1, j)) / (2.f * m_cellHeight);
 }
 
-float Mesh::getJDerivate(unsigned int i, unsigned int j) const {
+float Mesh::getJDerivate(unsigned int i, unsigned int j, bool withWater) const {
+    auto computeH = &Mesh::getTerrainH;
+    if (withWater) {
+        computeH = &Mesh::getH;
+    }
+
     //On fait attention au bord
     if (j == 0) {
-        return (getTerrainH(i, j + 1) - getTerrainH(i, j)) / m_cellWidth;
+        return ((this->*computeH)(i, j + 1) - (this->*computeH)(i, j)) / m_cellWidth;
     }
     if (j == m_gridWidth - 1) {
-        return (getTerrainH(i, j) - getTerrainH(i, j - 1)) / m_cellWidth;
+        return ((this->*computeH)(i, j) - (this->*computeH)(i, j - 1)) / m_cellWidth;
     }
 
     //return (getTerrainH(i, j) - getTerrainH(i, j - 1)) / m_cellWidth;
-    return (getTerrainH(i, j + 1) - getTerrainH(i, j - 1)) / (2.f * m_cellWidth);
+    return ((this->*computeH)(i, j + 1) - (this->*computeH)(i, j - 1)) / (2.f * m_cellWidth);
 }
 
-glm::vec2 Mesh::getGradient(unsigned int i, unsigned int j) const {
-    return glm::vec2(getIDerivate(i, j), getJDerivate(i, j));
+glm::vec2 Mesh::getGradient(unsigned int i, unsigned int j, bool withWater) const {
+    return glm::vec2(getIDerivate(i, j, withWater), getJDerivate(i, j, withWater));
 }
 
 
@@ -693,7 +710,7 @@ void Mesh::thermalErosionA(float thetaLimit, float erosionCoeff, float dt, bool 
     for (unsigned int i = 0; i < m_gridHeight; i++) {
         for (unsigned int j = 0; j < m_gridWidth; j++)
         {
-            glm::vec2 directionDescent = -getGradient(i, j);
+            glm::vec2 directionDescent = -getGradient(i, j, false);
             float slope = glm::length(directionDescent);
 
             //if (slope > 0) {directionDescent = directionDescent / slope;} //normalise la direction de descente
@@ -1726,7 +1743,7 @@ void init() {
     initOpenGL();
     //mesh = new Mesh({ "../data/heightmap5.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f)}, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 1.f)); //cpu
     //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png", "../data/simpleB.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
-    mesh = new Mesh({ "../data/simpleB.png", "../data/sand-with-water.png","../data/water-around-sand.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
+    mesh = new Mesh({ "../data/simpleB.png", "../data/sand-with-water.png","../data/water-around-sand.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(20.f / 255.f, 107.f / 255.f, 150.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
     //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
     initGPUprogram();
     //g_sunID = loadTextureFromFileToGPU("../data/heightmap3.jpg");
