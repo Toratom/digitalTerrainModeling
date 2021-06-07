@@ -15,6 +15,10 @@
 // conditions stipulated in the agreement/contract under which the program(s)
 // have been supplied.
 // ----------------------------------------------------------------------------
+extern "C" {
+    _declspec(dllexport) DWORD NvOptimusEnablement = 0x00000001;
+}
+
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
