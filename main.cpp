@@ -1017,6 +1017,7 @@ void Mesh::hydraulicErosion(unsigned int N) {
             }
         }
 
+        //Water Surface
         for (unsigned int i = 0; i < m_gridHeight; i++) {
             for (unsigned int j = 0; j < m_gridWidth; j++) {
                 flux = getLayersFlux(i, j);
