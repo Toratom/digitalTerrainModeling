@@ -142,26 +142,26 @@ public:
     void init(); //Génère la surface à partir des différentes épaisseur de niveau, ces normales, puis envoie l'info au GPU
     void render();
     unsigned int getIndex(unsigned int k, unsigned int i, unsigned int j);
-    float getH(unsigned int i, unsigned int j) const; //Donne la hauteur du terrain eau comprise
-    float getTerrainH(unsigned int i, unsigned int j) const; //Pour avoir la hauteur issue des différentes epaisseurs des layers au point (i,j) de la grille
-    float getLayerThickness(unsigned int k, unsigned int i, unsigned int j) const;
-    float getLayerH(unsigned int k, unsigned int i, unsigned int j) const;
+    float getH(int i, int j) const; //Donne la hauteur du terrain eau comprise, autorise indice negatif grace au clamping
+    float getTerrainH(int i, int j) const; //Pour avoir la hauteur issue des différentes epaisseurs des layers au point (i,j) de la grille
+    float getLayerThickness(unsigned int k, int i, int j) const;
+    float getLayerH(unsigned int k, int i, int j) const;
     void setLayerThickness(float value, unsigned int k, unsigned int i, unsigned int j);
     unsigned int getTopLayerId(unsigned int i, unsigned int j) const; //Id de 0 à m_nbOfLayers - 1 correspond à indice dans m_layersColor
     unsigned int getTerrainTopLayerId(unsigned int i, unsigned int j) const; //Id de 0 à m_nbOfLayers - 2 correspond on exclu l'eau
-    glm::uvec2 getLowestNeighbor(unsigned int i, unsigned int j) const;
-    float getIDerivate(unsigned int i, unsigned int j, bool withWater) const; //Dervive par rapport à i c'est à dire quand passe de ligne i à ligne i + 1 (Z)
-    float getJDerivate(unsigned int i, unsigned int j, bool withWater) const; //Derive par rapport à j (X)
-    glm::vec2 getGradient(unsigned int i, unsigned int j, bool withWater) const;
+    glm::uvec2 getLowestNeighbor(int i, int j) const;
+    float getIDerivate(int i, int j, bool withWater) const; //Dervive par rapport à i c'est à dire quand passe de ligne i à ligne i + 1 (Z)
+    float getJDerivate(int i, int j, bool withWater) const; //Derive par rapport à j (X)
+    glm::vec2 getGradient(int i, int j, bool withWater) const;
     void setLayersColors(int layer, float color[]);
     std::vector<glm::vec3> getLayersColors();
-    std::vector<glm::uvec2> getAllLowNeighbors(unsigned int i, unsigned int j, bool connexity8) const;
+    std::vector<glm::uvec2> getAllLowNeighbors(int i, int j, bool connexity8) const;
     void thermalErosionA(float thetaLimit,float erosionCoeff,float dt, bool neighbourReceiver, bool descentDirection, bool typeErosion, bool connexity8);
     void thermalErosionB(float thetaLimit, float erosionCoeff, float dt, bool connexity8);
     void hydraulicErosion(unsigned int N, float dt);
     //float Mesh::getLayersFlux(unsigned int k, unsigned int i, unsigned int j);
     void setLayersFlux(float value, unsigned int k, unsigned int i, unsigned int j);
-    glm::vec4 getLayersFlux(unsigned int i, unsigned int j);
+    glm::vec4 getLayersFlux(int i, int j);
     void setLayersFlux(glm::vec4 values, unsigned int i, unsigned int j);
     float waterArriving(unsigned int i, unsigned int j) const;
     void applyNThermalErosion(unsigned int N, float thetaLimit, float erosionCoeff, float dt, bool neighbourReceiver, bool descentDirection, bool typeErosion, bool connexity8, bool strategyB);
@@ -542,7 +542,7 @@ unsigned int Mesh::getIndex(unsigned int k, unsigned int i, unsigned int j) {
     return k * m_gridHeight * m_gridWidth + i * m_gridWidth + j;
 }
 
-float Mesh::getLayerH(unsigned int k, unsigned int i, unsigned int j) const {
+float Mesh::getLayerH(unsigned int k, int i, int j) const {
     float h = 0;
     for (unsigned int l = 0; l <= k; l = l + 1) {
         h += getLayerThickness(l, i, j);
@@ -550,7 +550,7 @@ float Mesh::getLayerH(unsigned int k, unsigned int i, unsigned int j) const {
     return h;
 }
 
-glm::uvec2 Mesh::getLowestNeighbor(unsigned int i, unsigned int j) const {
+glm::uvec2 Mesh::getLowestNeighbor(int i, int j) const {
     //Prend en compte le pixel central donc pas besoin de vérifier qu'on a bien un voisin plus bas que ce pixel central
 
     //Test en connexité 8
@@ -574,7 +574,7 @@ glm::uvec2 Mesh::getLowestNeighbor(unsigned int i, unsigned int j) const {
     return glm::uvec2(i, j) + glm::uvec2(lowestDI, lowestDJ);
 }
 
-std::vector<glm::uvec2> Mesh::getAllLowNeighbors(unsigned int i, unsigned int j, bool connexity8) const {
+std::vector<glm::uvec2> Mesh::getAllLowNeighbors(int i, int j, bool connexity8) const {
     //Test en connexité 8, retourne le vecteur de positions des voisins dans l'ordre des plus bas au plus haut 
     // (jusqu'à la hauteur du pixel central)
 
@@ -631,7 +631,7 @@ std::vector<glm::uvec2> Mesh::getAllLowNeighbors(unsigned int i, unsigned int j,
     return vectorOfLowNeighbors;
 }
 
-float Mesh::getLayerThickness(unsigned int k, unsigned int i, unsigned int j) const {
+float Mesh::getLayerThickness(unsigned int k, int i, int j) const {
     //Clamp (i, j) si en dehors de la grille
     if (i < 0) i = 0;
     if (i >= m_gridHeight) i = m_gridHeight - 1;
@@ -648,7 +648,7 @@ void Mesh::setLayerThickness(float value, unsigned int k, unsigned int i, unsign
     m_layersThickness[k * m_gridHeight * m_gridWidth + i * m_gridWidth + j] = value;
 }
 
-float Mesh::getH(unsigned int i, unsigned int j) const {
+float Mesh::getH(int i, int j) const {
     //Donne la hauteur en un point avec l'eau comprise (pour hydraulic simulation)
     float h = 0;
     for (unsigned int k = 0; k < m_nbOfLayers; k = k + 1) {
@@ -657,7 +657,7 @@ float Mesh::getH(unsigned int i, unsigned int j) const {
     return h;
 }
 
-float Mesh::getTerrainH(unsigned int i, unsigned int j) const {
+float Mesh::getTerrainH(int i, int j) const {
     //Donne la hauteur en un point du terrain, dont exclu l'eau qui est par convention dans l'index m_nbOfLayers - 1 (pour thermal erosion)
     float h = 0;
     for (unsigned int k = 0; k < m_nbOfLayers - 1; k = k + 1) {
@@ -666,7 +666,7 @@ float Mesh::getTerrainH(unsigned int i, unsigned int j) const {
     return h;
 }
 
-float Mesh::getIDerivate(unsigned int i, unsigned int j, bool withWater) const {
+float Mesh::getIDerivate(int i, int j, bool withWater) const {
     auto computeH = &Mesh::getTerrainH;
     if (withWater) {
         computeH = &Mesh::getH;
@@ -684,7 +684,7 @@ float Mesh::getIDerivate(unsigned int i, unsigned int j, bool withWater) const {
     return ((this->*computeH)(i + 1, j) - (this->*computeH)(i - 1, j)) / (2.f * m_cellHeight);
 }
 
-float Mesh::getJDerivate(unsigned int i, unsigned int j, bool withWater) const {
+float Mesh::getJDerivate(int i, int j, bool withWater) const {
     auto computeH = &Mesh::getTerrainH;
     if (withWater) {
         computeH = &Mesh::getH;
@@ -702,7 +702,7 @@ float Mesh::getJDerivate(unsigned int i, unsigned int j, bool withWater) const {
     return ((this->*computeH)(i, j + 1) - (this->*computeH)(i, j - 1)) / (2.f * m_cellWidth);
 }
 
-glm::vec2 Mesh::getGradient(unsigned int i, unsigned int j, bool withWater) const {
+glm::vec2 Mesh::getGradient(int i, int j, bool withWater) const {
     return glm::vec2(getIDerivate(i, j, withWater), getJDerivate(i, j, withWater));
 }
 
@@ -715,8 +715,8 @@ void Mesh::thermalErosionA(float thetaLimit, float erosionCoeff, float dt, bool 
     //typeErosion = 1 : L'érosion donne du sable, 0 : l'érosion donne le même layer (et passe sous le sable)
 
 
-    for (unsigned int i = 0; i < m_gridHeight; i++) {
-        for (unsigned int j = 0; j < m_gridWidth; j++)
+    for (int i = 0; i < m_gridHeight; i++) {
+        for (int j = 0; j < m_gridWidth; j++)
         {
             glm::vec2 directionDescent = -getGradient(i, j, false);
             float slope = glm::length(directionDescent);
@@ -758,8 +758,8 @@ void Mesh::thermalErosionA(float thetaLimit, float erosionCoeff, float dt, bool 
                     if (neighbourReceiver!=0) {
                         //std::cout << "Un seul voisin reçoit la matière" << std::endl;
 
-                        unsigned int nextI;
-                        unsigned int nextJ;
+                        int nextI;
+                        int nextJ;
                         glm::uvec2 nextCell;
 
                         //Solution 1 : On donne le layer au voisin dans la direction de descente : peut poser pb 
@@ -801,8 +801,8 @@ void Mesh::thermalErosionA(float thetaLimit, float erosionCoeff, float dt, bool 
                         //std::cout << "Tous les voisins inférieurs reçoivent la matière" << std::endl;
 
                         std::vector<glm::uvec2> vectorOfLowNeighbors = getAllLowNeighbors(i, j, connexity8);
-                        unsigned int nextI;
-                        unsigned int nextJ;
+                        int nextI;
+                        int nextJ;
                         float sumOfDifferences = 0;
 
                         //calcul de somme des h_i-h_j
@@ -883,8 +883,9 @@ void Mesh::thermalErosionB(float thetaLimit, float erosionCoeff, float dt, bool 
     float elevationLimit = glm::tan(thetaLimit);
     std::vector<float> newLayersThickness = m_layersThickness;
 
-    for (unsigned int i = 0; i < m_gridHeight; i++) {
-        for (unsigned int j = 0; j < m_gridWidth; j++)
+    //Il faut faire des blouces sur i et j des int et pas unsigned int car i - 1 peut-être négatif quand i = 0 !!
+    for (int i = 0; i < m_gridHeight; i++) {
+        for (int j = 0; j < m_gridWidth; j++)
         {
             topLayerIndexCurrentCell = getTerrainTopLayerId(i, j);
 
@@ -980,7 +981,7 @@ void Mesh::setLayersFlux(float value, unsigned int k, unsigned int i, unsigned i
     }
 }
 
-glm::vec4 Mesh::getLayersFlux(unsigned int i, unsigned int j) {
+glm::vec4 Mesh::getLayersFlux(int i, int j) {
     //Clamp (i, j) si en dehors de la grille
     if (i < 0) i = 0;
     if (i >= m_gridHeight) i = m_gridHeight - 1;
@@ -1017,9 +1018,9 @@ void Mesh::hydraulicErosion(unsigned int N, float dt) {
 
 
     for (unsigned int k=0; k < N; k++) {
-        for (unsigned int i = 0; i < m_gridHeight; i++) {
-            for (unsigned int j = 0; j < m_gridWidth; j++) {
-
+        //Il faut faire des blouces sur i et j des int et pas unsigned int car i - 1 peut-être négatif quand i = 0 !!
+        for (int i = 0; i < m_gridHeight; i++) {
+            for (int j = 0; j < m_gridWidth; j++) {
                 //Water increment
                 setLayerThickness(getLayerThickness(m_nbOfLayers - 1, i, j) + dt * waterArriving(i, j), m_nbOfLayers - 1, i, j);
 
@@ -1044,8 +1045,8 @@ void Mesh::hydraulicErosion(unsigned int N, float dt) {
         }
 
         //Water Surface
-        for (unsigned int i = 0; i < m_gridHeight; i++) {
-            for (unsigned int j = 0; j < m_gridWidth; j++) {
+        for (int i = 0; i < m_gridHeight; i++) {
+            for (int j = 0; j < m_gridWidth; j++) {
                 flux = getLayersFlux(i, j);
                 dV = dt * (getLayersFlux(i - 1, j).x + getLayersFlux(i, j + 1).y + getLayersFlux(i + 1, j).w + getLayersFlux(i, j - 1).z - flux.x - flux.y - flux.z - flux.w);
                 setLayerThickness(getLayerThickness(m_nbOfLayers - 1, i, j) + dV / A, m_nbOfLayers - 1, i, j);
@@ -1734,8 +1735,8 @@ void init() {
     //mesh = new Mesh({ "../data/heightmap5.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f)}, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 1.f)); //cpu
     //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png", "../data/simpleB.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
     mesh = new Mesh({ "../data/simpleB.png", "../data/sand-with-water.png","../data/water-around-sand.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(20.f / 255.f, 107.f / 255.f, 150.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
-    //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png","../data/simpleS.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
-    //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
+    //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleStr.png","../data/simpleB.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
+    //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleW.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(20.f / 255.f, 107.f / 255.f, 150.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 1.f)); //cpu
     initGPUprogram();
     //g_sunID = loadTextureFromFileToGPU("../data/heightmap3.jpg");
     mesh->init(); //gpu
