@@ -61,6 +61,8 @@ int g_neighbourReceiver_t = 0; //all neighbors
 unsigned int g_nbOfIterations_t = 0;
 unsigned int g_nbOfIterations_t_max = 1;
 
+float g_dt_h = 0.0500;
+int g_iter_h = 5;
 unsigned int g_nbOfIterations_h = 0;
 unsigned int g_nbOfIterations_h_max = 1;
 
@@ -70,6 +72,8 @@ int g_fault_niter = 1;
 int g_fault_circlemode = 0;
 unsigned int g_fault_nbOfIterations = 0;
 unsigned int g_fault_nbOfIterations_max = 1;
+
+int g_layer = 1;
 
 GLFWwindow* g_window2 = nullptr;
 
@@ -150,7 +154,7 @@ public:
     std::vector<glm::uvec2> getAllLowNeighbors(unsigned int i, unsigned int j, bool connexity8) const;
     void thermalErosionA(float thetaLimit,float erosionCoeff,float dt, bool neighbourReceiver, bool descentDirection, bool typeErosion, bool connexity8);
     void thermalErosionB(float thetaLimit, float erosionCoeff, float dt, bool connexity8);
-    void hydraulicErosion(unsigned int N);
+    void hydraulicErosion(unsigned int N, float dt);
     //float Mesh::getLayersFlux(unsigned int k, unsigned int i, unsigned int j);
     void setLayersFlux(float value, unsigned int k, unsigned int i, unsigned int j);
     glm::vec4 getLayersFlux(unsigned int i, unsigned int j);
@@ -971,19 +975,18 @@ void Mesh::setLayersFlux(glm::vec4 values, unsigned int i, unsigned int j) {
 
 float Mesh::waterArriving(unsigned int i, unsigned int j) const
 {
-    if (i > m_gridHeight - 3 && j > m_gridWidth - 3) return 1.f;
+    if (i == (m_gridHeight + 1) / 2 && j == (m_gridWidth + 1) / 2) return 1.f;
 
     return 0.0f;
 }
 
-void Mesh::hydraulicErosion(unsigned int N) {
+void Mesh::hydraulicErosion(unsigned int N, float dt) {
     //terrain height : b
     //water height : d
     //suspended sediment amout : s
     //outflow flux f
     //velocity v
 
-    float dt = 0.001f;
     float g = 9.81f;
     glm::vec4 flux;
 
@@ -1410,7 +1413,7 @@ void renderImGui() {
 
     ImGui::ProgressBar(1.f - g_nbOfIterations_t / (float) g_nbOfIterations_t_max, ImVec2(0, 20));
 
-    if (ImGui::TreeNode("Parameters")) {
+    if (ImGui::TreeNode("Parameters thermal")) {
 
         ImGui::Spacing();
         ImGui::Text("Erosion's strategy :");
@@ -1490,8 +1493,8 @@ void renderImGui() {
 
         ImGui::SliderFloat("Theta", &g_thetaLimit_t, 0, PI / 2);
         ImGui::SliderFloat("Erosion coefficient", &g_erosionCoeff_t, 0, 1);
-        ImGui::SliderFloat("Dt", &g_dt_t, 0.000001f, 0.1f, "%f", ImGuiSliderFlags_Logarithmic);
-        ImGui::SliderInt("Number of iterations", &g_iter_t, 1, 1000);
+        ImGui::SliderFloat("Dt thermal", &g_dt_t, 0.000001f, 0.1f, "%f", ImGuiSliderFlags_Logarithmic);
+        ImGui::SliderInt("Number of iterations thermal", &g_iter_t, 1, 1000);
         ImGui::TreePop();
     }
 
@@ -1504,34 +1507,24 @@ void renderImGui() {
 
     if (ImGui::Button("Start hydraulic erosion")) {
         //mesh->applyNThermalErosion(iter_h, thetaLimit_h, erosionCoeff_h, dt_h, true);
-        g_nbOfIterations_h = g_iter_t;
-        g_nbOfIterations_h_max = g_iter_t;
+        g_nbOfIterations_h = g_iter_h;
+        g_nbOfIterations_h_max = g_iter_h;
     }
-    
-    /*
 
-    if (ImGui::TreeNode("Parameters")) {
+    ImGui::ProgressBar(1.f - g_nbOfIterations_h / (float)g_nbOfIterations_h_max, ImVec2(0, 20));
 
-        //ImGui::SliderFloat("Theta", &thetaLimit_h, 0, PI / 2);
-        //ImGui::SliderFloat("Erosion coefficient", &erosionCoeff_h, 0, 1);
-        //ImGui::SliderFloat("Dt", &dt_h, 0.000001f, 0.1f, "%f", ImGuiSliderFlags_Logarithmic);
-        //ImGui::SliderInt("Number of iterations", &iter_h, 1, 1000);
+    if (ImGui::TreeNode("Parameters hydraulic")) {
+
+        ImGui::SliderFloat("Dt hydraulic", &g_dt_h, 0.000001f, 0.1f, "%f", ImGuiSliderFlags_Logarithmic);
+        ImGui::SliderInt("Number of iterations hydraulic", &g_iter_h, 1, 1000);
         ImGui::TreePop();
-        
-    }*/
-
-    
+    } 
 
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();
 
     if (ImGui::Button("Fault Algorithm")) {
-        //mesh = new Mesh(2, 100, 100, g_fault_mode, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 1.f));
-        //mesh->init();
-
-        //mesh->applyFault(g_fault_mode, g_fault_niter);
-        //mesh->init();
         g_fault_nbOfIterations = g_fault_niter;
         g_fault_nbOfIterations_max = g_fault_niter;
     }
@@ -1588,8 +1581,6 @@ void renderImGui() {
         mesh->init();
     }
 
-    int layerNb = 1;
-
     if (ImGui::TreeNode("Layers")) {
 
         static char heightMapName[255] = "../data/simpleB.png";
@@ -1608,15 +1599,15 @@ void renderImGui() {
             ImGui::EndTooltip();
         }
 
-        if (ImGui::RadioButton("Layer 0", &layerNb, 0)) {
+        if (ImGui::RadioButton("Layer 0", &g_layer, 0)) {
         }
         ImGui::SameLine();
 
-        if (ImGui::RadioButton("Layer 1", &layerNb, 1)) {
+        if (ImGui::RadioButton("Layer 1", &g_layer, 1)) {
         }
         ImGui::SameLine();
 
-        if (ImGui::RadioButton("Layer 2", &layerNb, 2)) {
+        if (ImGui::RadioButton("Layer 2", &g_layer, 2)) {
         }
 
         if (ImGui::Button("Add")) {
@@ -1635,10 +1626,10 @@ void renderImGui() {
             } else {
                 std::vector<std::string> fileNames = mesh->getLayersFileNames();
                 //fileNames.push_back(heightMapName);
-                fileNames[layerNb] = heightMapName;
+                fileNames[g_layer] = heightMapName;
                 std::vector<glm::vec3> colors = mesh->getLayersColors();
                 //colors.push_back(glm::vec3(colorAdd[0], colorAdd[1], colorAdd[2]));
-                colors[layerNb] = glm::vec3(colorAdd[0], colorAdd[1], colorAdd[2]);
+                colors[g_layer] = glm::vec3(colorAdd[0], colorAdd[1], colorAdd[2]);
                 mesh = new Mesh(fileNames, colors, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
                 mesh->init();
             }
@@ -1774,7 +1765,7 @@ int main(int argc, char ** argv) {
         }
 
         if (g_nbOfIterations_h > 0) {
-            mesh->hydraulicErosion(1); //J'ai mis à 1 pour avoir une iteration par frame c'est plus smooth
+            mesh->hydraulicErosion(1, g_dt_h); //J'ai mis à 1 pour avoir une iteration par frame c'est plus smooth
             g_nbOfIterations_h -= 1;
         }
         
