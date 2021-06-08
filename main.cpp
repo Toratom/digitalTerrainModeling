@@ -61,15 +61,23 @@ int g_neighbourReceiver_t = 0; //all neighbors
 unsigned int g_nbOfIterations_t = 0;
 unsigned int g_nbOfIterations_t_max = 1;
 
+float g_dt_h = 0.0500;
+int g_iter_h = 500;
 unsigned int g_nbOfIterations_h = 0;
 unsigned int g_nbOfIterations_h_max = 1;
 
 //Fault parameters
 int g_fault_mode = 2;
 int g_fault_niter = 1;
+float g_fault_dy = 0.5f;
 int g_fault_circlemode = 0;
 unsigned int g_fault_nbOfIterations = 0;
 unsigned int g_fault_nbOfIterations_max = 1;
+
+int g_layer = 1;
+float g_h_min = 0.f;
+float g_h_max = 2.f;
+float g_dy = 0.5f;
 
 GLFWwindow* g_window2 = nullptr;
 
@@ -150,14 +158,14 @@ public:
     std::vector<glm::uvec2> getAllLowNeighbors(unsigned int i, unsigned int j, bool connexity8) const;
     void thermalErosionA(float thetaLimit,float erosionCoeff,float dt, bool neighbourReceiver, bool descentDirection, bool typeErosion, bool connexity8);
     void thermalErosionB(float thetaLimit, float erosionCoeff, float dt, bool connexity8);
-    void hydraulicErosion(unsigned int N);
+    void hydraulicErosion(unsigned int N, float dt);
     //float Mesh::getLayersFlux(unsigned int k, unsigned int i, unsigned int j);
     void setLayersFlux(float value, unsigned int k, unsigned int i, unsigned int j);
     glm::vec4 getLayersFlux(unsigned int i, unsigned int j);
     void setLayersFlux(glm::vec4 values, unsigned int i, unsigned int j);
     float waterArriving(unsigned int i, unsigned int j) const;
     void applyNThermalErosion(unsigned int N, float thetaLimit, float erosionCoeff, float dt, bool neighbourReceiver, bool descentDirection, bool typeErosion, bool connexity8, bool strategyB);
-    void applyFault(const int& mode, const int& n_iter);
+    void applyFault(const int& mode, const int& n_iter, const float& _dy );
     std::vector<std::string> getLayersFileNames();
 
 
@@ -988,19 +996,18 @@ void Mesh::setLayersFlux(glm::vec4 values, unsigned int i, unsigned int j) {
 
 float Mesh::waterArriving(unsigned int i, unsigned int j) const
 {
-    if (i > m_gridHeight - 3 && j > m_gridWidth - 3) return 1.f;
+    if (i == (m_gridHeight + 1) / 2 && j == (m_gridWidth + 1) / 2) return 0.f;
 
-    return 0.0f;
+    return 0.f;
 }
 
-void Mesh::hydraulicErosion(unsigned int N) {
+void Mesh::hydraulicErosion(unsigned int N, float dt) {
     //terrain height : b
     //water height : d
     //suspended sediment amout : s
     //outflow flux f
     //velocity v
 
-    float dt = 0.001f;
     float g = 9.81f;
     glm::vec4 flux;
 
@@ -1015,7 +1022,6 @@ void Mesh::hydraulicErosion(unsigned int N) {
 
                 //Water increment
                 setLayerThickness(getLayerThickness(m_nbOfLayers - 1, i, j) + dt * waterArriving(i, j), m_nbOfLayers - 1, i, j);
-                //std::cout << "c";
 
                 //Outflow Flux
                 //Top
@@ -1030,7 +1036,6 @@ void Mesh::hydraulicErosion(unsigned int N) {
                 //Bottom
                 dh = getH(i, j) - getH(i - 1, j);
                 setLayersFlux(std::max(0.f, getLayersFlux(i, j).w + dtAg * dh / m_cellHeight), 3, i, j);
-                //dh = getTerrainH(i, j) + getLayerThickness(2, i, j) - getTerrainH(i - 1, j) - getLayerThickness(2, i - 1, j);
 
                 flux = getLayersFlux(i, j);
                 K = std::min(1.f, getLayerThickness(m_nbOfLayers - 1, i, j) * m_cellWidth * m_cellHeight / (flux.x + flux.y + flux.z + flux.w) / dt);
@@ -1038,6 +1043,7 @@ void Mesh::hydraulicErosion(unsigned int N) {
             }
         }
 
+        //Water Surface
         for (unsigned int i = 0; i < m_gridHeight; i++) {
             for (unsigned int j = 0; j < m_gridWidth; j++) {
                 flux = getLayersFlux(i, j);
@@ -1049,25 +1055,20 @@ void Mesh::hydraulicErosion(unsigned int N) {
     init();
 }
 
-void Mesh::applyFault(const int& mode, const int& n_iter) {
-
-    /*size_t map_size = width * height;
-    unsigned char* heightMap = (unsigned char*)malloc(map_size);
-
-    for (unsigned char* p = heightMap, *pg = heightMap; p != heightMap + map_size; p += 1, pg += 1) {
-        *pg = (unsigned char)115;
-    }*/
+void Mesh::applyFault(const int& mode, const int& n_iter, const float& _dy) {
 
     float d = sqrt(m_gridWidth * m_gridWidth + m_gridHeight * m_gridHeight);
-    float dy;
+    float dy = _dy;
     int src_index;
     float n_iterf = (float) n_iter;
-    float dy0 = 0.2f;
-    float dyn = 0.01f;
-    float v, a, b, c;
-    float dist;
+    float dy0 = 0.2 * dy;
+    float dyn = 0.01 * dy;
     float w = 10.f;
+    float v, a, b, c, dist;
 
+    if (g_fault_mode == 10) {
+        dy = -dy;
+    }
 
     for (int k = 0; k < n_iterf; k++) {
 
@@ -1076,42 +1077,25 @@ void Mesh::applyFault(const int& mode, const int& n_iter) {
             v = rand();
             a = cos(v);
             b = sin(v);
-
-            //c = (cos(rand()) / 2.f + 0.5f) * d - d / 2.f;
             c = ((float)rand() / RAND_MAX) * d - d / 2.0f;
 
-            switch (mode) {
-            case 0:
-                dy = 0.05f;
-                break;
-
-            case 1:
+            if (mode == 1) {
                 if (k < n_iterf) {
                     dy = dy0 + ((float)k / n_iterf) * (dyn / dy0);
                 }
                 else {
                     dy = dyn;
                 }
-                break;
-
-            default:
-                dy = 0.1f;
             }
 
             for (int i = 0; i < m_gridHeight; i++) {
                 for (int j = 0; j < m_gridWidth; j++) {
 
                     src_index = j + m_gridWidth * i;
-                    //dist = (float) (a * (float) i + b * (float) j - c) / d;
                     dist = a * i + b * j - c;
 
                     if (mode == 2) {
                         dy = atan(dist) * 0.064f;
-                        //dy = dist / (float) 10.f;
-
-                        if (false) {
-                            std::cout << dy << " " << dist << std::endl;
-                        }
 
                     }
                     else if (mode == 3) {
@@ -1123,12 +1107,21 @@ void Mesh::applyFault(const int& mode, const int& n_iter) {
 
                     }
                     else if (mode == 5) {
-                        dy = (1.f - exp(-(dist) / 10.f)) * 0.1f;
+                        dy = (0.1f - exp(-(pow(dist, 2)) / 10.f)) * 0.1f;
 
                     }
                     else if (mode == 6) {
                         if (dist < w) {
                             dy = cos((dist * 3.14f / w - 3.14)) * 0.1f;
+
+                        }
+                        else {
+                            dy = 0;
+                        }
+                    }
+                    else if (mode == 6) {
+                        if (dist < w) {
+                            dy = sin((dist * 3.14f / w - 3.14)) * 0.1f;
 
                         }
                         else {
@@ -1150,14 +1143,7 @@ void Mesh::applyFault(const int& mode, const int& n_iter) {
                         mesh->setLayerThickness(mesh->getLayerThickness(1, i, j) + dy, 1, i, j);
 
                     }
-
-                    //std::cout << a * i + b * j - c << std::endl;
-
-
-                    //std::cout << dy << std::endl;
                 }
-                //std::cout << i << " " << 0 << " " << (float) heightMap[src_index] << " " << (a * i > c) << std::endl;
-
             }
         }
         else {
@@ -1166,23 +1152,18 @@ void Mesh::applyFault(const int& mode, const int& n_iter) {
 
             int randX = rand() % (m_gridWidth + 1);
             int randZ = rand() % (m_gridHeight + 1);
-            int randCircSize = rand() % ((m_gridWidth + m_gridHeight) / 10); // circle diameter
+            int randCircSize = rand() % ((m_gridWidth + m_gridHeight) / 10); 
             for (int i = 0; i < m_gridHeight; i++) {
                 for (int j = 0; j < m_gridWidth; j++) {
-                    float pd = sqrt((randX - j) * (randX - j) + (randZ - i) * (randZ - i)) * 2.0f / randCircSize; // pd = distanceFromCircle*2/size
-                    if (fabs(pd) <= 1.0f) { // if the vertex is within the circle, displace it upwards
+                    float pd = sqrt((randX - j) * (randX - j) + (randZ - i) * (randZ - i)) * 2.0f / randCircSize; 
+                    if (fabs(pd) <= 1.0f) {
                         float diff = (dy / 2.0f + cos(pd * 3.14f) * dy / 2.0f);
                         mesh->setLayerThickness(mesh->getLayerThickness(1, i, j) + diff, 1, i, j);
-
-                        //terrain[z][x] += (terrain[z][x] + diff > maxHeight) ? 0 : diff; // constrain to maxHeight
                     }
                 }
             }
         }
-        //std::cout << c << " " << a << std::endl;
     }
-
-    //std::cout << " " << mesh->getLayerThickness(1, 50, 50) << " " << dist;
     mesh->init();
 }
 
@@ -1426,7 +1407,7 @@ void renderImGui() {
 
     ImGui::ProgressBar(1.f - g_nbOfIterations_t / (float) g_nbOfIterations_t_max, ImVec2(0, 20));
 
-    if (ImGui::TreeNode("Parameters")) {
+    if (ImGui::TreeNode("Parameters thermal")) {
 
         ImGui::Spacing();
         ImGui::Text("Erosion's strategy :");
@@ -1506,77 +1487,76 @@ void renderImGui() {
 
         ImGui::SliderFloat("Theta", &g_thetaLimit_t, 0, PI / 2);
         ImGui::SliderFloat("Erosion coefficient", &g_erosionCoeff_t, 0, 1);
-        ImGui::SliderFloat("Dt", &g_dt_t, 0.000001f, 0.1f, "%f", ImGuiSliderFlags_Logarithmic);
-        ImGui::SliderInt("Number of iterations", &g_iter_t, 1, 1000);
+        ImGui::SliderFloat("Dt thermal", &g_dt_t, 0.000001f, 0.1f, "%f", ImGuiSliderFlags_Logarithmic);
+        ImGui::SliderInt("Number of iterations thermal", &g_iter_t, 1, 1000);
         ImGui::TreePop();
     }
 
     ImGui::Spacing();
-    /*
-    static float thetaLimit_h = 0.3;
-    static float erosionCoeff_h = 0.3;
-    static float dt_h = 0.0500;
-    static int iter_h = 5;*/
 
     if (ImGui::Button("Start hydraulic erosion")) {
-        //mesh->applyNThermalErosion(iter_h, thetaLimit_h, erosionCoeff_h, dt_h, true);
-        g_nbOfIterations_h = g_iter_t;
-        g_nbOfIterations_h_max = g_iter_t;
+        g_nbOfIterations_h = g_iter_h;
+        g_nbOfIterations_h_max = g_iter_h;
     }
-    
-    /*
 
-    if (ImGui::TreeNode("Parameters")) {
+    ImGui::ProgressBar(1.f - g_nbOfIterations_h / (float)g_nbOfIterations_h_max, ImVec2(0, 20));
 
-        //ImGui::SliderFloat("Theta", &thetaLimit_h, 0, PI / 2);
-        //ImGui::SliderFloat("Erosion coefficient", &erosionCoeff_h, 0, 1);
-        //ImGui::SliderFloat("Dt", &dt_h, 0.000001f, 0.1f, "%f", ImGuiSliderFlags_Logarithmic);
-        //ImGui::SliderInt("Number of iterations", &iter_h, 1, 1000);
+    if (ImGui::TreeNode("Parameters hydraulic")) {
+
+        ImGui::SliderFloat("Dt hydraulic", &g_dt_h, 0.000001f, 0.1f, "%f", ImGuiSliderFlags_Logarithmic);
+        ImGui::SliderInt("Number of iterations hydraulic", &g_iter_h, 1, 1000);
         ImGui::TreePop();
-        
-    }*/
-
-    
+    } 
 
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();
 
     if (ImGui::Button("Fault Algorithm")) {
-        //mesh = new Mesh(2, 100, 100, g_fault_mode, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 1.f));
-        //mesh->init();
 
-        //mesh->applyFault(g_fault_mode, g_fault_niter);
-        //mesh->init();
-        g_fault_nbOfIterations = g_fault_niter;
-        g_fault_nbOfIterations_max = g_fault_niter;
+        if (g_fault_mode == 10) {
+            g_fault_nbOfIterations = 1;
+            g_fault_nbOfIterations_max = 1;
+        }
+        else {
+            g_fault_nbOfIterations = g_fault_niter;
+            g_fault_nbOfIterations_max = g_fault_niter;
+        }
     }
 
-    ImGui::ProgressBar(1.f - g_fault_nbOfIterations / (float)g_fault_nbOfIterations_max, ImVec2(0, 20));
+    ImGui::ProgressBar(1.f - g_fault_nbOfIterations / (float) g_fault_nbOfIterations_max, ImVec2(0, 20));
 
     if (ImGui::TreeNode("Parameters fault algorithm")) {
 
-        if (ImGui::RadioButton("Mode5", &g_fault_mode, 5)) {
+        if (ImGui::RadioButton("sin", &g_fault_mode, 7)) {
         }
         ImGui::SameLine();
 
-        if (ImGui::RadioButton("Mode4", &g_fault_mode, 4)) {
+        if (ImGui::RadioButton("cos", &g_fault_mode, 6)) {
         }
         ImGui::SameLine();
 
-        if (ImGui::RadioButton("Mode3", &g_fault_mode, 3)) {
+        if (ImGui::RadioButton("1-exp", &g_fault_mode, 5)) {
         }
         ImGui::SameLine();
 
-        if (ImGui::RadioButton("Mode2", &g_fault_mode, 2)) {
+        if (ImGui::RadioButton("-exp", &g_fault_mode, 4)) {
         }
         ImGui::SameLine();
 
-        if (ImGui::RadioButton("Mode1", &g_fault_mode, 1)) {
+        if (ImGui::RadioButton("exp", &g_fault_mode, 3)) {
         }
         ImGui::SameLine();
 
-        if (ImGui::RadioButton("Mode0", &g_fault_mode, 0)) {
+        if (ImGui::RadioButton("atan", &g_fault_mode, 2)) {
+        }
+        ImGui::SameLine();
+
+        if (ImGui::RadioButton("dy variant", &g_fault_mode, 1)) {
+        }
+        ImGui::SameLine();
+
+        if (ImGui::RadioButton("dy constant", &g_fault_mode, 0)) {
         }
 
         if (ImGui::RadioButton("Line", &g_fault_circlemode, 0)) {
@@ -1586,6 +1566,7 @@ void renderImGui() {
         if (ImGui::RadioButton("Circle", &g_fault_circlemode, 1)) {
         }
         ImGui::SliderInt("Number of iterations", &g_fault_niter, 1, 1000);
+        ImGui::SliderFloat("Decrement", &g_fault_dy, 0, 2.f);
 
         ImGui::TreePop();
     }
@@ -1599,12 +1580,13 @@ void renderImGui() {
 
     if (ImGui::Button("Restart")) {
         g_nbOfIterations_t = 0;
+        g_nbOfIterations_h = 0;
         g_fault_nbOfIterations = 0;
-        mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
+        //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(g_h_min, g_h_max)); //cpu
+        //mesh->init();
+        mesh = new Mesh(mesh->getLayersFileNames(), mesh->getLayersColors(), glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(g_h_min, g_h_max)); //cpu
         mesh->init();
     }
-
-    int layerNb = 1;
 
     if (ImGui::TreeNode("Layers")) {
 
@@ -1624,15 +1606,15 @@ void renderImGui() {
             ImGui::EndTooltip();
         }
 
-        if (ImGui::RadioButton("Layer 0", &layerNb, 0)) {
+        if (ImGui::RadioButton("Layer 0", &g_layer, 0)) {
         }
         ImGui::SameLine();
 
-        if (ImGui::RadioButton("Layer 1", &layerNb, 1)) {
+        if (ImGui::RadioButton("Layer 1", &g_layer, 1)) {
         }
         ImGui::SameLine();
 
-        if (ImGui::RadioButton("Layer 2", &layerNb, 2)) {
+        if (ImGui::RadioButton("Layer 2", &g_layer, 2)) {
         }
 
         if (ImGui::Button("Add")) {
@@ -1650,14 +1632,22 @@ void renderImGui() {
 
             } else {
                 std::vector<std::string> fileNames = mesh->getLayersFileNames();
-                //fileNames.push_back(heightMapName);
-                fileNames[layerNb] = heightMapName;
+                fileNames[g_layer] = heightMapName;
                 std::vector<glm::vec3> colors = mesh->getLayersColors();
-                //colors.push_back(glm::vec3(colorAdd[0], colorAdd[1], colorAdd[2]));
-                colors[layerNb] = glm::vec3(colorAdd[0], colorAdd[1], colorAdd[2]);
-                mesh = new Mesh(fileNames, colors, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
+                colors[g_layer] = glm::vec3(colorAdd[0], colorAdd[1], colorAdd[2]);
+                mesh = new Mesh(fileNames, colors, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(g_h_min, g_h_max));
                 mesh->init();
             }
+        }
+
+        ImGui::DragFloatRange2("Range height", &g_h_min, &g_h_max, 0.01f, 0.0f, 10.0f, "Min: %.01f %%", "Max: %.01f %%", ImGuiSliderFlags_AlwaysClamp);
+
+        if (ImGui::Button("+")) {
+            mesh->applyFault(10, 1, g_dy);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("-")) {
+            mesh->applyFault(10, 1, -g_dy);
         }
 
         ImGui::TreePop();
@@ -1703,13 +1693,13 @@ void renderImGui() {
 
     ImGui::Separator();
 
-    /*if (ImGui::TreeNode("Range Widgets"))
+    /* (ImGui::TreeNode("Range Widgets"))
     {
         static float begin = 10, end = 90;
-        static int begin_i = 100, end_i = 1000;
-        ImGui::DragFloatRange2("range float", &begin, &end, 0.25f, 0.0f, 100.0f, "Min: %.1f %%", "Max: %.1f %%", ImGuiSliderFlags_AlwaysClamp);
-        ImGui::DragIntRange2("range int", &begin_i, &end_i, 5, 0, 1000, "Min: %d units", "Max: %d units");
-        ImGui::DragIntRange2("range int (no bounds)", &begin_i, &end_i, 5, 0, 0, "Min: %d units", "Max: %d units");
+        //static int begin_i = 100, end_i = 1000;
+        //ImGui::DragFloatRange2("range float", &g_h_min, &g_h_max, 0.01f, 0.0f, 10.0f, "Min: %.01f %%", "Max: %.01f %%", ImGuiSliderFlags_AlwaysClamp);
+        //ImGui::DragIntRange2("range int", &begin_i, &end_i, 5, 0, 1000, "Min: %d units", "Max: %d units");
+        //ImGui::DragIntRange2("range int (no bounds)", &begin_i, &end_i, 5, 0, 0, "Min: %d units", "Max: %d units");
         ImGui::TreePop();
     }*/
 
@@ -1744,6 +1734,7 @@ void init() {
     //mesh = new Mesh({ "../data/heightmap5.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f)}, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 1.f)); //cpu
     //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png", "../data/simpleB.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
     mesh = new Mesh({ "../data/simpleB.png", "../data/sand-with-water.png","../data/water-around-sand.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(20.f / 255.f, 107.f / 255.f, 150.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
+    //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png","../data/simpleS.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
     //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(237.f / 255.f, 224.f / 255.f, 81.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
     initGPUprogram();
     //g_sunID = loadTextureFromFileToGPU("../data/heightmap3.jpg");
@@ -1785,12 +1776,12 @@ int main(int argc, char ** argv) {
         }
 
         if (g_fault_nbOfIterations > 0) {
-            mesh->applyFault(g_fault_mode, 1);            
+            mesh->applyFault(g_fault_mode, 1, g_fault_dy);            
             g_fault_nbOfIterations -= 1;
         }
 
         if (g_nbOfIterations_h > 0) {
-            mesh->hydraulicErosion(1); //J'ai mis à 1 pour avoir une iteration par frame c'est plus smooth
+            mesh->hydraulicErosion(1, g_dt_h); //J'ai mis à 1 pour avoir une iteration par frame c'est plus smooth
             g_nbOfIterations_h -= 1;
         }
         
