@@ -982,11 +982,8 @@ void Mesh::setLayersFlux(float value, unsigned int k, unsigned int i, unsigned i
 }
 
 glm::vec4 Mesh::getLayersFlux(int i, int j) {
-    //Clamp (i, j) si en dehors de la grille
-    if (i < 0) i = 0;
-    if (i >= m_gridHeight) i = m_gridHeight - 1;
-    if (j < 0) j = 0;
-    if (j >= m_gridWidth) j = m_gridWidth - 1;
+    //Il ne faut pas clamp les flux mais les mettre à 0 si en dehors de la grille, car sinon les cellules sur le bords recevoivent de l'eau de leur voisin en dehors de la grille
+    if (i < 0 || i >= m_gridHeight || j < 0 || j >= m_gridWidth) return glm::vec4(0.f);
     
     return m_layersFlux[i * m_gridWidth + j];
 }
