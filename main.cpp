@@ -681,7 +681,11 @@ float Mesh::getIDerivate(int i, int j, bool withWater) const {
     }
     
     //return (getTerrainH(i, j) - getTerrainH(i - 1, j)) / m_cellHeight;
-    return ((this->*computeH)(i + 1, j) - (this->*computeH)(i - 1, j)) / (2.f * m_cellHeight);
+    if (g_typeGradient_t == 0) return ((this->*computeH)(i + 1, j) - (this->*computeH)(i - 1, j)) / (2.f * m_cellHeight);
+
+    else if (g_typeGradient_t == 1) return ((this->*computeH)(i, j) - (this->*computeH)(i-1, j)) / m_cellHeight;
+
+    else return ((this->*computeH)(i+1, j) - (this->*computeH)(i, j)) / m_cellHeight;
 }
 
 float Mesh::getJDerivate(int i, int j, bool withWater) const {
@@ -699,7 +703,11 @@ float Mesh::getJDerivate(int i, int j, bool withWater) const {
     }
 
     //return (getTerrainH(i, j) - getTerrainH(i, j - 1)) / m_cellWidth;
-    return ((this->*computeH)(i, j + 1) - (this->*computeH)(i, j - 1)) / (2.f * m_cellWidth);
+    if (g_typeGradient_t==0) return ((this->*computeH)(i, j + 1) - (this->*computeH)(i, j - 1)) / (2.f * m_cellWidth);
+
+    else if (g_typeGradient_t==1) return ((this->*computeH)(i, j) - (this->*computeH)(i, j - 1)) / m_cellWidth;
+
+    else return ((this->*computeH)(i, j+1) - (this->*computeH)(i, j)) / m_cellWidth;
 }
 
 glm::vec2 Mesh::getGradient(int i, int j, bool withWater) const {
