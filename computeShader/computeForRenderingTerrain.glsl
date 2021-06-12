@@ -1,13 +1,24 @@
+//Permet de calculer les normales du terrain et la hauteur du terrain en chaque i,j avant le rendering
+
 layout(std430, binding = 0) readonly buffer ThickR {
-	float ThicknessR[][NB_OF_LAYERS]; //Faire la même chose pour les water props, utiliser des arrays d'array
+	float ThicknessR[][NB_OF_LAYERS];
 };
 
 layout(std140, binding = 1) writeonly buffer NormW {
 	vec4 NormalsW[];
 };
 
+layout(std430, binding = 2) writeonly buffer HW {
+	float HeightsW[];
+};
+
+layout(std140, binding = 3) writeonly buffer ColW {
+	vec4 ColorsW[];
+};
+
 uniform uint gridHeight, gridWidth; 
 uniform float cellHeight, cellWidth;
+uniform vec3 layersColor[NB_OF_LAYERS];
 
 layout(local_size_x = PATCH_HEIGHT, local_size_y = PATCH_WIDTH, local_size_z = 1) in;
 //x correspond à i et y correspond à j
@@ -59,6 +70,14 @@ vec2 getGradient(int i, int j) {
 	return vec2(getIDerivate(i, j), getJDerivate(i, j));
 }
 
+uint getTopLayerId(int i, int j) {
+	uint id = NB_OF_LAYERS - 1; //A modifier quand on met l'eau, parametre de la fonction a mettre en uniforme ?
+	while (ThicknessR[getIndex(i, j)][id] == 0. && id > 0) {
+		id = id - 1;
+	}
+
+	return id;
+}
 
 
 void main() {
@@ -68,7 +87,14 @@ void main() {
 	vec2 grad;
 
 	if (i < gridHeight && j < gridWidth) {
+		//Update normales
 		grad = getGradient(i, j);
 		NormalsW[getIndex(i ,j)] = vec4(normalize(vec3(-grad.y, 1, -grad.x)), 0);
+
+		//Upadte heights
+		HeightsW[getIndex(i, j)] = getHeight(i, j);
+
+		//Update color
+		ColorsW[getIndex(i, j)] = vec4(layersColor[getTopLayerId(i, j)], 1.);
 	}
 }

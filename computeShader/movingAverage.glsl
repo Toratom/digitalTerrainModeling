@@ -54,13 +54,14 @@ void main() {
 
 	if (i < gridHeight && j < gridWidth) {
 		float newH = 0;
-		float currentH = 0;
 		for (int dI = -halfKSize; dI < halfKSize + 1; dI += 1) {
 			for (int dJ = -halfKSize; dJ < halfKSize + 1; dJ += 1) {
 				newH += getHeight(i + dI, j + dJ) / (kSize * kSize);
 			}
 		}
 
-		ThicknessW[getIndex(i, j)][0] = newH;
+		for (uint k = 0; k < NB_OF_LAYERS; k += 1) {
+			ThicknessW[getIndex(i, j)][k] = newH / NB_OF_LAYERS;
+		}
 	}
 }
