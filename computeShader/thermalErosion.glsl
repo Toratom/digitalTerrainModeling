@@ -10,7 +10,9 @@ layout(std430, binding = 1) writeonly buffer ThickW {
 };
 
 uniform uint gridHeight, gridWidth; 
-uniform float cellHeight, cellWidth, erosionCoeff, thetaLimit, dt;
+uniform float cellHeight, cellWidth, dt;
+uniform float erosionCoeffs[NB_OF_LAYERS];
+uniform float thetasLimit[NB_OF_LAYERS];
 
 const ivec2 offset = ivec2(1, 1);
 const int indexOfSand = NB_OF_LAYERS - 1;
@@ -82,28 +84,28 @@ void main() {
 					currentXY = pointXY + ivec2(dI, dJ);
 					currentTopLayerId = getTopLayerId(currentIJ.x, currentIJ.y);
 
-					if (currentTopLayerId > 0) { //Test si le layer affleurant n'est pas de la bedrock qui ne s'érode pas
-						for (uint k = 0; k < 8; k += 1) {
-							neighborIJ = currentIJ + neighborTranslations[k];
-							distanceToNextCell = distance(currentIJ, neighborIJ); //sqrt(pow(cellHeight * neighborTranslations[k].x, 2) + pow(cellWidth * neighborTranslations[k].y, 2));
-							dHOut[currentXY.x][currentXY.y][k] = max(0, erosionCoeff * ((getHeight(currentIJ.x, currentIJ.y) - getHeight(neighborIJ.x, neighborIJ.y)) / distanceToNextCell - elevationLimit) * dt);
-							dHOutTot += dHOut[currentXY.x][currentXY.y][k];
-						}
+					//Cas bedrock gere par erosionCoeff qui est une liste
+					for (uint k = 0; k < 8; k += 1) {
+						neighborIJ = currentIJ + neighborTranslations[k];
+						distanceToNextCell = sqrt(pow(cellHeight * neighborTranslations[k].x, 2) + pow(cellWidth * neighborTranslations[k].y, 2));
+						dHOut[currentXY.x][currentXY.y][k] = max(0, erosionCoeff[currentTopLayerId] * ((getHeight(currentIJ.x, currentIJ.y) - getHeight(neighborIJ.x, neighborIJ.y)) / distanceToNextCell - elevationLimit[currentTopLayerId]) * dt);
+						dHOutTot += dHOut[currentXY.x][currentXY.y][k];
+					}
 					
-						//Calcule du coeff de normalisation K, pour eviter de perdre plus de matiere que la colonne courante du layer affleurant
-						K = min(1, ThicknessR[getIndex(currentIJ.x, currentIJ.y)][currentTopLayerId] / dHOutTot);
+					//Calcule du coeff de normalisation K, pour eviter de perdre plus de matiere que la colonne courante du layer affleurant
+					K = min(1, ThicknessR[getIndex(currentIJ.x, currentIJ.y)][currentTopLayerId] / dHOutTot);
 
-						//Applique normalisation
-						for (uint k = 0; k < 8; k += 1) {
-							dHOut[currentXY.x][currentXY.y][k] = K * dHOut[currentXY.x][currentXY.y][k];
-						}
+					//Applique normalisation
+					for (uint k = 0; k < 8; k += 1) {
+						dHOut[currentXY.x][currentXY.y][k] = K * dHOut[currentXY.x][currentXY.y][k];
 					}
 				}
 			}
 		}
+
 		retirePhase();
-		
-		//Phase 2 : calcul de ce qui entre et ce qui sort
+
+		//Phase 2 : calcul de ce qui entre, ce qui sort
 		currentXY = pointXY + offset; //Localisation de pointXY dans dHOut
 		dHOutTot = 0.;
 		float dHInTot = 0.;
@@ -117,8 +119,15 @@ void main() {
 		}
 
 		//Phase 3 : ecriture avec convention que l'érodé devient sable, besoin de separer en R et W a cause des frontieres/bords des patchs qui se trouve dans plusieurs working group
+		float thicknessOutput[NB_OF_LAYERS]; //On passe par cette variable car on n'a mis ThicknessW en W only donc on ne peut pas utiliser le += et -= + permet de regler le pb ou currentTopLayerId = sandId
+		for (uint k = 0; k < NB_OF_LAYERS; k += 1) {
+			thicknessOutput[k] = ThicknessR[getIndex(pointIJ.x, pointIJ.y)][k];
+		}
 		currentTopLayerId = getTopLayerId(pointIJ.x, pointIJ.y);
-		ThicknessW[getIndex(pointIJ.x, pointIJ.y)][currentTopLayerId] = ThicknessR[getIndex(pointIJ.x, pointIJ.y)][currentTopLayerId] - dHOutTot;
-		ThicknessW[getIndex(pointIJ.x, pointIJ.y)][indexOfSand] = ThicknessR[getIndex(pointIJ.x, pointIJ.y)][indexOfSand] + dHInTot;
+		thicknessOutput[currentTopLayerId] -= dHOutTot;
+		thicknessOutput[indexOfSand] += dHInTot;
+		for (uint k = 0; k < NB_OF_LAYERS; k += 1) {
+			ThicknessW[getIndex(pointIJ.x, pointIJ.y)][k] = thicknessOutput[k];
+		}
 	}
 }

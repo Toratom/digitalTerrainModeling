@@ -783,43 +783,45 @@ void initBuffersAndUniforms() {
     //Uniforms
     glUseProgram(g_computeProgram); //Il faut "bind" le program afin de pouvoir set des variables uniforme avec glUniform...
     GLint loc = glGetUniformLocation(g_computeProgram, "gridHeight");
-    if (loc == -1) std::cout << "ERROR WITH UNIFORM gridHeight" << std::endl;
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM gridHeight CP" << std::endl;
     glUniform1ui(loc, mesh->getGridHeight());
     loc = glGetUniformLocation(g_computeProgram, "gridWidth");
-    if (loc == -1) std::cout << "ERROR WITH UNIFORM gridWidth" << std::endl;
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM gridWidth CP" << std::endl;
     glUniform1ui(loc, mesh->getGridWidth());
     loc = glGetUniformLocation(g_computeProgram, "cellHeight");
-    if (loc == -1) std::cout << "ERROR WITH UNIFORM cellHeight" << std::endl;
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM cellHeight CP" << std::endl;
     glUniform1f(loc, mesh->getCellHeight());
     loc = glGetUniformLocation(g_computeProgram, "cellWidth");
-    if (loc == -1) std::cout << "ERROR WITH UNIFORM cellWidth" << std::endl;
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM cellWidth CP" << std::endl;
     glUniform1f(loc, mesh->getCellWidth());
-    loc = glGetUniformLocation(g_computeProgram, "erosionCoeff");
-    if (loc == -1) std::cout << "ERROR WITH UNIFORM erosionCoeff" << std::endl;
-    glUniform1f(loc, g_erosionCoeff_t);
-    loc = glGetUniformLocation(g_computeProgram, "thetaLimit");
-    if (loc == -1) std::cout << "ERROR WITH UNIFORM thetaLimit" << std::endl;
-    glUniform1f(loc, g_thetaLimit_t);
+
+    loc = glGetUniformLocation(g_computeProgram, "erosionCoeffs");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM erosionCoeffs CP" << std::endl;
+    glUniform1fv(loc, NB_OF_LAYERS, .data());
+    loc = glGetUniformLocation(g_computeProgram, "thetasLimit");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM thetasLimit CP" << std::endl;
+    glUniform1fv(loc, NB_OF_LAYERS, .data());
+
     loc = glGetUniformLocation(g_computeProgram, "dt");
-    if (loc == -1) std::cout << "ERROR WITH UNIFORM dt" << std::endl;
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM dt CP" << std::endl;
     glUniform1f(loc, g_dt_t);
     glUseProgram(0);
 
     glUseProgram(g_computeForRenderingTerrain); //Il faut "bind" le program afin de pouvoir set des variables uniforme avec glUniform...
     loc = glGetUniformLocation(g_computeForRenderingTerrain, "gridHeight");
-    if (loc == -1) std::cout << "ERROR WITH UNIFORM gridHeight" << std::endl;
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM gridHeight R" << std::endl;
     glUniform1ui(loc, mesh->getGridHeight());
     loc = glGetUniformLocation(g_computeForRenderingTerrain, "gridWidth");
-    if (loc == -1) std::cout << "ERROR WITH UNIFORM gridWidth" << std::endl;
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM gridWidth R" << std::endl;
     glUniform1ui(loc, mesh->getGridWidth());
     loc = glGetUniformLocation(g_computeForRenderingTerrain, "cellHeight");
-    if (loc == -1) std::cout << "ERROR WITH UNIFORM cellHeight" << std::endl;
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM cellHeight R" << std::endl;
     glUniform1f(loc, mesh->getCellHeight());
     loc = glGetUniformLocation(g_computeForRenderingTerrain, "cellWidth");
-    if (loc == -1) std::cout << "ERROR WITH UNIFORM cellWidth" << std::endl;
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM cellWidth R" << std::endl;
     glUniform1f(loc, mesh->getCellWidth());
     loc = glGetUniformLocation(g_computeForRenderingTerrain, "layersColor");
-    if (loc == -1) std::cout << "ERROR WITH UNIFORM layersColor" << std::endl;
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM layersColor R" << std::endl;
     glUniform3fv(loc, NB_OF_LAYERS, mesh->getLayersColor().data());
     glUseProgram(0);
 
@@ -993,7 +995,7 @@ void init() {
     initGLFW();
     initOpenGL();
     //Pour l'instant ne fonctionne qu'en mode 1 layer...
-    mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f)}, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
+    mesh = new Mesh({ "../data/simpleB.png", "../data/simpleStr.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f)}, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
     //g_sunID = loadTextureFromFileToGPU("../data/heightmap3.jpg");
     initGPUprograms(); //Init aussi les dimension de l'espace d'invocation
     initBuffersAndUniforms(); //Aprs gpu programs car fait aussi uniform
@@ -1030,7 +1032,7 @@ int main(int argc, char ** argv) {
     init(); // Your initialization code (user interface, OpenGL states, scene with geometry, material, lights, etc)
 
     GLuint swapBuff = 0;
-    unsigned int nbOfIt = 1000000;
+    unsigned int nbOfIt = 100000;
     while(!glfwWindowShouldClose(g_window)) {
         if (nbOfIt > 0) {
             //Phase de calculs :
