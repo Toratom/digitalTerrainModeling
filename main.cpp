@@ -74,6 +74,15 @@ int g_fault_circlemode = 0;
 unsigned int g_fault_nbOfIterations = 0;
 unsigned int g_fault_nbOfIterations_max = 1;
 
+//Perlin parameters
+unsigned int g_perl_nbOfIterations = 0;
+unsigned int g_perl_nbOfIterations_max = 1;
+int g_perl_niter = 1;
+std::string g_noise_type = "perlin";
+int g_perl_layer = 1;
+float g_max_noise = 0.5f;
+
+
 //Noise layer generation parameters
 std::vector<float> noiseVector;
 
@@ -1697,6 +1706,42 @@ void renderImGui() {
         ImGui::TreePop();
     }
 
+    if (ImGui::Button("Perlin noise")) {
+
+        if (g_fault_mode == 10) {
+            g_perl_nbOfIterations = 1;
+            g_perl_nbOfIterations_max = 1;
+        }
+        else {
+            g_perl_nbOfIterations = g_perl_niter;
+            g_perl_nbOfIterations_max = g_perl_niter;
+        }
+    }
+
+    ImGui::ProgressBar(1.f - g_perl_nbOfIterations / (float) g_perl_nbOfIterations_max, ImVec2(0, 20));
+
+    if (ImGui::TreeNode("Parameters perlin noise")) {
+
+        //if (ImGui::RadioButton("Perlin", &g_noise_type, "perlin")) {
+        //}
+        //ImGui::SameLine();
+
+        if (ImGui::RadioButton("Layer 1", &g_perl_layer, 0)) {
+        }
+        ImGui::SameLine();
+
+        if (ImGui::RadioButton("Layer 2", &g_perl_layer, 1)) {
+        }
+        ImGui::SameLine();
+
+        if (ImGui::RadioButton("Layer 3", &g_perl_layer, 2)) {
+        }
+        ImGui::SliderInt("Number of iterations", &g_perl_niter, 1, 1000);
+        ImGui::SliderFloat("Max noise", &g_max_noise, 0, 10.f);
+
+        ImGui::TreePop();
+    }
+
     ImGui::Spacing();
     ImGui::Spacing();
     ImGui::Separator();
@@ -1708,6 +1753,7 @@ void renderImGui() {
         g_nbOfIterations_t = 0;
         g_nbOfIterations_h = 0;
         g_fault_nbOfIterations = 0;
+        g_perl_nbOfIterations = 0;
         //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(g_h_min, g_h_max)); //cpu
         //mesh->init();
         mesh = new Mesh(mesh->getLayersFileNames(), mesh->getLayersColors(), glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(g_h_min, g_h_max)); //cpu
@@ -1909,6 +1955,11 @@ int main(int argc, char ** argv) {
         if (g_nbOfIterations_h > 0) {
             mesh->hydraulicErosion(1, g_dt_h); //J'ai mis à 1 pour avoir une iteration par frame c'est plus smooth
             g_nbOfIterations_h -= 1;
+        }
+
+        if (g_perl_nbOfIterations > 0) {
+            mesh->applyNoise(1, g_perl_layer, g_max_noise, "perlin");
+            g_perl_nbOfIterations -= 1;
         }
         
         render();
