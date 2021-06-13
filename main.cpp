@@ -1698,6 +1698,13 @@ void renderImGui() {
     }
 
     ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    if (ImGui::Button("Noise terrain generator")) {
+    }
+
+    ImGui::Spacing();
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();
