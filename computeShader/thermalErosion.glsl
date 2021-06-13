@@ -72,8 +72,7 @@ void main() {
 	float distanceToNextCell;
 	uint currentTopLayerId;
 	float dHOutTot = 0.;
-	float K = 1.;
-	float elevationLimit = tan(thetaLimit);
+	float K = 1.; 
 	
 	if (pointIJ.x < gridHeight && pointIJ.y < gridWidth) {
 		//Phase 1 : Calculs des dHOut pour PATCH_W_NEIGHBORHOOD (la double boucle permet d'explorer tous le patch w neigbour intelligemment)
@@ -88,7 +87,7 @@ void main() {
 					for (uint k = 0; k < 8; k += 1) {
 						neighborIJ = currentIJ + neighborTranslations[k];
 						distanceToNextCell = sqrt(pow(cellHeight * neighborTranslations[k].x, 2) + pow(cellWidth * neighborTranslations[k].y, 2));
-						dHOut[currentXY.x][currentXY.y][k] = max(0, erosionCoeff[currentTopLayerId] * ((getHeight(currentIJ.x, currentIJ.y) - getHeight(neighborIJ.x, neighborIJ.y)) / distanceToNextCell - elevationLimit[currentTopLayerId]) * dt);
+						dHOut[currentXY.x][currentXY.y][k] = max(0, erosionCoeffs[currentTopLayerId] * ((getHeight(currentIJ.x, currentIJ.y) - getHeight(neighborIJ.x, neighborIJ.y)) / distanceToNextCell - tan(thetasLimit[currentTopLayerId])) * dt);
 						dHOutTot += dHOut[currentXY.x][currentXY.y][k];
 					}
 					

@@ -138,7 +138,9 @@ glm::vec3 g_baseRot(0.0);
 //Mesh
 class Mesh {
 public:
-    Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec3> layersColor, const glm::vec4& corners, const glm::vec2& e);
+    Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec3> layersColor, 
+        const std::vector<float> layersErosionCoeffs, const std::vector<float> layersThetasLimit,
+        const glm::vec4& corners, const glm::vec2& e);
     const std::vector<unsigned int>& getTriangleIndices() const;
     float getLayerThickness(unsigned int k, unsigned int i, unsigned int j) const;
     float getH(unsigned int i, unsigned int j) const;
@@ -149,6 +151,8 @@ public:
     float getCellWidth() const;
     float getCellHeight() const;
     std::vector<float> getLayersColor() const; //Attention renvoie un tableau de float, il faut le lire par groupe de 3 pour avoir les couleurs
+    std::vector<float> getLayersErosionCoeffs() const;
+    std::vector<float> getLayersThetaLimit() const;
     void render();
 
 private:
@@ -161,6 +165,8 @@ private:
     glm::vec2 m_gridBottomRightCorner;
     std::vector<float> m_layersThickness;
     std::vector<glm::vec3> m_layersColor;
+    std::vector<float> m_layersErosionCoeffs;
+    std::vector<float> m_layersThetaLimits;
     std::vector<glm::vec2> m_gridPositions;
     std::vector<unsigned int> m_triangleIndices;
     unsigned int m_vao;
@@ -186,6 +192,13 @@ std::vector<float> Mesh::getLayersColor() const {
         tmp[k2 + 2] = currentColor.z;
     }
     return tmp;
+}
+
+std::vector<float> Mesh::getLayersErosionCoeffs() const {
+    return m_layersErosionCoeffs;
+}
+std::vector<float> Mesh::getLayersThetaLimit() const {
+    return m_layersThetaLimits;
 }
 
 const std::vector<unsigned int>& Mesh::getTriangleIndices() const {
@@ -316,7 +329,9 @@ unsigned char* Mesh::loadHeightMapFromFile(const std::string& filename, int& wid
     return gray_img;
 }
 
-Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec3> layersColor, const glm::vec4& corners, const glm::vec2& e) {
+Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec3> layersColor,
+    const std::vector<float> layersErosionCoeffs, const std::vector<float> layersThetasLimit,
+    const glm::vec4& corners, const glm::vec2& e) {
     int width = 0, height = 0, channels = 0;
     m_nbOfLayers = filenames.size();
     if (m_nbOfLayers != NB_OF_LAYERS) {
@@ -324,6 +339,8 @@ Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec
         exit(1);
     }
     m_layersColor = layersColor;
+    m_layersErosionCoeffs = layersErosionCoeffs;
+    m_layersThetaLimits = layersThetasLimit;
     m_gridTopLeftCorner = glm::vec2(corners.x, corners.y);
     m_gridBottomRightCorner = glm::vec2(corners.z, corners.w);
     float ax = m_gridTopLeftCorner.x; //a coin en haut gauche
@@ -797,10 +814,10 @@ void initBuffersAndUniforms() {
 
     loc = glGetUniformLocation(g_computeProgram, "erosionCoeffs");
     if (loc == -1) std::cout << "ERROR WITH UNIFORM erosionCoeffs CP" << std::endl;
-    glUniform1fv(loc, NB_OF_LAYERS, .data());
+    glUniform1fv(loc, NB_OF_LAYERS, mesh->getLayersErosionCoeffs().data());
     loc = glGetUniformLocation(g_computeProgram, "thetasLimit");
     if (loc == -1) std::cout << "ERROR WITH UNIFORM thetasLimit CP" << std::endl;
-    glUniform1fv(loc, NB_OF_LAYERS, .data());
+    glUniform1fv(loc, NB_OF_LAYERS, mesh->getLayersThetaLimit().data());
 
     loc = glGetUniformLocation(g_computeProgram, "dt");
     if (loc == -1) std::cout << "ERROR WITH UNIFORM dt CP" << std::endl;
@@ -995,7 +1012,11 @@ void init() {
     initGLFW();
     initOpenGL();
     //Pour l'instant ne fonctionne qu'en mode 1 layer...
-    mesh = new Mesh({ "../data/simpleB.png", "../data/simpleStr.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f)}, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
+    mesh = new Mesh({ "../data/simpleB.png", "../data/simpleStr.png" }, 
+        { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f)},
+        { 0.f , 0.3f},
+        { 0.f, 0.3f},
+        glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
     //g_sunID = loadTextureFromFileToGPU("../data/heightmap3.jpg");
     initGPUprograms(); //Init aussi les dimension de l'espace d'invocation
     initBuffersAndUniforms(); //Aprs gpu programs car fait aussi uniform
