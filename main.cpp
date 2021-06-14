@@ -1191,54 +1191,54 @@ void Mesh::applyFault(const int& mode, const int& n_iter, const float& _dy) {
 void Mesh::setPerlinNoiseVector(float maxNoise) {
 
     //si le vecteur est vide écrit dedans (pour ne pas ré écrire plein de fois)
-    if (noiseVector.size() == 0) {
-        int newGridWidth = m_gridWidth + 1;
-        int newGridHeight = m_gridHeight + 1;
-        std::vector<glm::vec2> randomGradients; //liste de gradients random de norme 1
+    noiseVector.clear();
 
-        for (unsigned int i = 0; i < newGridHeight; i++)
+    int newGridWidth = m_gridWidth + 1;
+    int newGridHeight = m_gridHeight + 1;
+    std::vector<glm::vec2> randomGradients; //liste de gradients random de norme 1
+
+    for (unsigned int i = 0; i < newGridHeight; i++)
+    {
+        for (unsigned int j = 0; j < newGridHeight; j++)
         {
-            for (unsigned int j = 0; j < newGridHeight; j++)
-            {
-                float thetaRandom = rand();
-                glm::vec2 randomGradient(cos(thetaRandom), sin(thetaRandom));//norme 1
-                randomGradients.push_back(randomGradient);
-            }
+            float thetaRandom = rand();
+            glm::vec2 randomGradient(cos(thetaRandom), sin(thetaRandom));//norme 1
+            randomGradients.push_back(randomGradient);
         }
+    }
 
-        for (unsigned int i = 0; i < m_gridHeight; i++)
+    for (unsigned int i = 0; i < m_gridHeight; i++)
+    {
+        for (unsigned int j = 0; j < m_gridWidth; j++)
         {
-            for (unsigned int j = 0; j < m_gridWidth; j++)
-            {
-                glm::vec2 centerCurrentCell(j + m_cellWidth / 2, i + m_cellHeight / 2); //notre sommet du mesh
-                float meanDot = 0;
-                //on regarde les 4 sommets autour du centre
-                int leftX = (int)centerCurrentCell.x;
-                int rightX = leftX + 1;
-                int topY = (int)centerCurrentCell.y;
-                int bottomY = topY + 1;
+            glm::vec2 centerCurrentCell(j + m_cellWidth / 2, i + m_cellHeight / 2); //notre sommet du mesh
+            float meanDot = 0;
+            //on regarde les 4 sommets autour du centre
+            int leftX = (int)centerCurrentCell.x;
+            int rightX = leftX + 1;
+            int topY = (int)centerCurrentCell.y;
+            int bottomY = topY + 1;
 
-                glm::vec2 offsetBottomRight(m_cellWidth / 2, m_cellHeight / 2); //offset pour le sommet en bas à droite
-                glm::vec2 gradientBottomRight(randomGradients.at(rightX + bottomY * newGridWidth)); //gradient du sommet en bas à droite
-                meanDot += glm::dot(offsetBottomRight, gradientBottomRight);
+            glm::vec2 offsetBottomRight(m_cellWidth / 2, m_cellHeight / 2); //offset pour le sommet en bas à droite
+            glm::vec2 gradientBottomRight(randomGradients.at(rightX + bottomY * newGridWidth)); //gradient du sommet en bas à droite
+            meanDot += glm::dot(offsetBottomRight, gradientBottomRight);
 
-                glm::vec2 offsetTopLeft(-m_cellWidth / 2, -m_cellHeight / 2);
-                glm::vec2 gradientTopLeft(randomGradients.at(leftX + topY * newGridWidth));
-                meanDot += glm::dot(offsetTopLeft, gradientTopLeft);
+            glm::vec2 offsetTopLeft(-m_cellWidth / 2, -m_cellHeight / 2);
+            glm::vec2 gradientTopLeft(randomGradients.at(leftX + topY * newGridWidth));
+            meanDot += glm::dot(offsetTopLeft, gradientTopLeft);
 
-                glm::vec2 offsetBottomLeft(-m_cellWidth / 2, m_cellHeight / 2);
-                glm::vec2 gradientBottomLeft(randomGradients.at(leftX + bottomY * newGridWidth));
-                meanDot += glm::dot(offsetBottomLeft, gradientBottomLeft);
+            glm::vec2 offsetBottomLeft(-m_cellWidth / 2, m_cellHeight / 2);
+            glm::vec2 gradientBottomLeft(randomGradients.at(leftX + bottomY * newGridWidth));
+            meanDot += glm::dot(offsetBottomLeft, gradientBottomLeft);
 
-                glm::vec2 offsetTopRight(m_cellWidth / 2, -m_cellHeight / 2);
-                glm::vec2 gradientTopRight(randomGradients.at(rightX + topY * newGridWidth));
-                meanDot += glm::dot(offsetTopRight, gradientTopRight);
+            glm::vec2 offsetTopRight(m_cellWidth / 2, -m_cellHeight / 2);
+            glm::vec2 gradientTopRight(randomGradients.at(rightX + topY * newGridWidth));
+            meanDot += glm::dot(offsetTopRight, gradientTopRight);
 
-                meanDot /= 4; //meanDot représente le bruit à ajouter, c'est une valeur entre -sqrt((cellWidth/2)²+(cellHeight/2)²) et +sqrt((cellWidth/2)²+(cellHeight/2)²)
+            meanDot /= 4; //meanDot représente le bruit à ajouter, c'est une valeur entre -sqrt((cellWidth/2)²+(cellHeight/2)²) et +sqrt((cellWidth/2)²+(cellHeight/2)²)
 
-                float noise = maxNoise * meanDot / sqrt((m_cellWidth * m_cellWidth / 2) + (m_cellHeight * m_cellHeight / 2)); //entre -maxNoise et maxNoise
-                noiseVector.push_back(noise);
-            }
+            float noise = maxNoise * meanDot / sqrt((m_cellWidth * m_cellWidth / 4) + (m_cellHeight * m_cellHeight / 4)); //entre -maxNoise et maxNoise
+            noiseVector.push_back(noise);
         }
     }
 
@@ -1257,7 +1257,7 @@ float Mesh::getLocalNoise(int i, int j, int typeNoise, float maxNoise, int layer
     }
 
     if (typeNoise == 1) {
-        setPerlinNoiseVector(maxNoise);
+        
         noise = noiseVector.at(k * m_gridWidth + l); //bruit entre -maxNoise et maxNoise
     }
 
@@ -1268,6 +1268,9 @@ void Mesh::applyNoise(const int& n_iter, int layerID, float maxNoise, int typeNo
     
     for (int n = 0; n < n_iter; n++)
     {
+        //on créé la carte de bruit de perlin à chaque itération
+        if (typeNoise==1) setPerlinNoiseVector(maxNoise);
+
         for (int i = 0; i < m_gridHeight; i++)
         {
             for (int j = 0; j < m_gridWidth; j++)
