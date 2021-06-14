@@ -58,8 +58,6 @@ uint getTopLayerId(int i, int j) {
 	return id;
 }
 
-void retirePhase() { memoryBarrierShared(); barrier(); }
-
 void main() {
 	//i, j indice global VS x, y indice locale
 	const ivec2 pointIJ = ivec2(gl_GlobalInvocationID);
@@ -74,36 +72,42 @@ void main() {
 	float dHOutTot = 0.;
 	float K = 1.; 
 	
-	if (pointIJ.x < gridHeight && pointIJ.y < gridWidth) {
-		//Phase 1 : Calculs des dHOut pour PATCH_W_NEIGHBORHOOD (la double boucle permet d'explorer tous le patch w neigbour intelligemment)
-		for (int dI = 0; dI < PATCH_W_NEIGHBORHOOD_HEIGHT; dI += PATCH_HEIGHT) {
-			for (int dJ = 0; dJ < PATCH_W_NEIGHBORHOOD_WIDTH; dJ += PATCH_WIDTH) {
-				if (pointXY.x + dI < PATCH_W_NEIGHBORHOOD_HEIGHT && pointXY.y + dJ < PATCH_W_NEIGHBORHOOD_WIDTH) {
-					currentIJ = pointIJ + ivec2(dI, dJ) - offset;
-					currentXY = pointXY + ivec2(dI, dJ);
-					currentTopLayerId = getTopLayerId(currentIJ.x, currentIJ.y);
 
-					//Cas bedrock gere par erosionCoeff qui est une liste
-					for (uint k = 0; k < 8; k += 1) {
-						neighborIJ = currentIJ + neighborTranslations[k];
-						distanceToNextCell = sqrt(pow(cellHeight * neighborTranslations[k].x, 2) + pow(cellWidth * neighborTranslations[k].y, 2));
-						dHOut[currentXY.x][currentXY.y][k] = max(0, erosionCoeffs[currentTopLayerId] * ((getHeight(currentIJ.x, currentIJ.y) - getHeight(neighborIJ.x, neighborIJ.y)) / distanceToNextCell - tan(thetasLimit[currentTopLayerId])) * dt);
-						dHOutTot += dHOut[currentXY.x][currentXY.y][k];
-					}
-					
-					//Calcule du coeff de normalisation K, pour eviter de perdre plus de matiere que la colonne courante du layer affleurant
-					K = min(1, ThicknessR[getIndex(currentIJ.x, currentIJ.y)][currentTopLayerId] / dHOutTot);
+	//Phase 1 : Calculs des dHOut pour PATCH_W_NEIGHBORHOOD (la double boucle permet d'explorer tous le patch w neigbour intelligemment)
+	//On fait cette phase en dehors du if pas un probleme car on clamp les coord
+	//Besoin de le sortir du if pour que la retire phase soit en dehors du if, car sinon il arrive que certain thread n'atteignent pas la barriere (car dans un if) ce qui bloque tout !!
+	for (int dI = 0; dI < PATCH_W_NEIGHBORHOOD_HEIGHT; dI += PATCH_HEIGHT) {
+		for (int dJ = 0; dJ < PATCH_W_NEIGHBORHOOD_WIDTH; dJ += PATCH_WIDTH) {
+			if (pointXY.x + dI < PATCH_W_NEIGHBORHOOD_HEIGHT && pointXY.y + dJ < PATCH_W_NEIGHBORHOOD_WIDTH) {
+				currentIJ = pointIJ + ivec2(dI, dJ) - offset;
+				currentXY = pointXY + ivec2(dI, dJ);
+				currentTopLayerId = getTopLayerId(currentIJ.x, currentIJ.y);
 
-					//Applique normalisation
-					for (uint k = 0; k < 8; k += 1) {
-						dHOut[currentXY.x][currentXY.y][k] = K * dHOut[currentXY.x][currentXY.y][k];
-					}
+				//Cas bedrock gere par erosionCoeff = 0 grace à la liste erosionCoeffs
+				for (uint k = 0; k < 8; k += 1) {
+					neighborIJ = currentIJ + neighborTranslations[k];
+					distanceToNextCell = sqrt(pow(cellHeight * neighborTranslations[k].x, 2) + pow(cellWidth * neighborTranslations[k].y, 2));
+					dHOut[currentXY.x][currentXY.y][k] = max(0, erosionCoeffs[currentTopLayerId] * ((getHeight(currentIJ.x, currentIJ.y) - getHeight(neighborIJ.x, neighborIJ.y)) / distanceToNextCell - tan(thetasLimit[currentTopLayerId])) * dt);
+					dHOutTot += dHOut[currentXY.x][currentXY.y][k];
+				}
+
+				//Calcule du coeff de normalisation K, pour eviter de perdre plus de matiere que la colonne courante du layer affleurant
+				K = min(1, ThicknessR[getIndex(currentIJ.x, currentIJ.y)][currentTopLayerId] / dHOutTot);
+
+				//Applique normalisation
+				for (uint k = 0; k < 8; k += 1) {
+					dHOut[currentXY.x][currentXY.y][k] = K * dHOut[currentXY.x][currentXY.y][k];
 				}
 			}
 		}
+	}
 
-		retirePhase();
+	//Retire Phase
+	barrier();
+	memoryBarrierShared();
 
+	if (pointIJ.x < gridHeight && pointIJ.y < gridWidth) {
+	//On update la hauteur que si le point est dans la grille d'ou le if
 		//Phase 2 : calcul de ce qui entre, ce qui sort
 		currentXY = pointXY + offset; //Localisation de pointXY dans dHOut
 		dHOutTot = 0.;
