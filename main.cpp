@@ -78,12 +78,9 @@ unsigned int g_fault_nbOfIterations_max = 1;
 unsigned int g_perl_nbOfIterations = 0;
 unsigned int g_perl_nbOfIterations_max = 1;
 int g_perl_niter = 1;
-std::string g_noise_type = "perlin";
+int g_noise_type = 0; //0 : random, 1 : perlin
 int g_perl_layer = 1;
-float g_max_noise = 0.5f;
-
-
-//Noise layer generation parameters
+float g_max_noise = 0.2f;
 std::vector<float> noiseVector;
 
 
@@ -180,10 +177,10 @@ public:
     void applyNThermalErosion(unsigned int N, float thetaLimit, float erosionCoeff, float dt, bool neighbourReceiver, bool descentDirection, bool typeErosion, bool connexity8, bool strategyB);
     void applyFault(const int& mode, const int& n_iter, const float& _dy );
     std::vector<std::string> getLayersFileNames();
-    void applyNoise(const int& n_iter, int layerID, float maxNoise, std::string typeNoise);
+    void applyNoise(const int& n_iter, int layerID, float maxNoise, int typeNoise);
     void setPerlinNoiseVector(float maxNoise);
-    float getLocalNoise(int i, int j, std::string typeNoise, float maxNoise, int layerID);
-    void fractionalBrownianMotion(int i, int j, std::string typeNoise, float maxNoise, int layerID);
+    float getLocalNoise(int i, int j, int typeNoise, float maxNoise, int layerID);
+    void fractionalBrownianMotion(int i, int j, int typeNoise, float maxNoise, int layerID);
 
 
 private:
@@ -1247,34 +1244,37 @@ void Mesh::setPerlinNoiseVector(float maxNoise) {
 
 }
 
-float Mesh::getLocalNoise(int i, int j, std::string typeNoise, float maxNoise, int layerID) {
+float Mesh::getLocalNoise(int i, int j, int typeNoise, float maxNoise, int layerID) {
 
     float noise = 0;
 
     //pour le fractional brownian motion, si on dépasse la grille avec les fréquences on fait une boucle
-    int i = i % m_gridHeight;
-    int j = j % m_gridWidth;
+    int k = i % m_gridHeight;
+    int l = j % m_gridWidth;
 
-    if (typeNoise == "random") {
-        noise = 2 * maxNoise * (rand() / RAND_MAX) - maxNoise; //bruit entre -maxNoise et maxNoise   
+    if (typeNoise == 0) {
+        noise = 2 * maxNoise * ((float) rand() / RAND_MAX) - maxNoise; //bruit entre -maxNoise et maxNoise  
     }
 
-    if (typeNoise == "perlin") {
+    if (typeNoise == 1) {
         setPerlinNoiseVector(maxNoise);
-        noise = noiseVector.at(i * m_gridWidth + j); //bruit entre -maxNoise et maxNoise
+        noise = noiseVector.at(k * m_gridWidth + l); //bruit entre -maxNoise et maxNoise
     }
 
     return noise;
 }
 
-void Mesh::applyNoise(const int& n_iter, int layerID, float maxNoise, std::string typeNoise) {
+void Mesh::applyNoise(const int& n_iter, int layerID, float maxNoise, int typeNoise) {
+    
     for (int n = 0; n < n_iter; n++)
     {
         for (int i = 0; i < m_gridHeight; i++)
         {
             for (int j = 0; j < m_gridWidth; j++)
             {
+                
                 float noise = getLocalNoise(i, j, typeNoise, maxNoise, layerID);
+                
                 float newThickness = mesh->getLayerThickness(layerID, i, j) + noise;
                 if (newThickness < 0) mesh->setLayerThickness(0, layerID, i, j);
                 else mesh->setLayerThickness(newThickness, layerID, i, j);
@@ -1285,7 +1285,7 @@ void Mesh::applyNoise(const int& n_iter, int layerID, float maxNoise, std::strin
     
 }
 
-void fractionalBrownianMotion(int i, int j, std::string typeNoise, float maxNoise, int layerID) {
+void fractionalBrownianMotion(int i, int j, int typeNoise, float maxNoise, int layerID) {
     int numberOfOctaves = 4;
     float lacunarity = 2;
     float attenuation = 0.5;
@@ -1706,7 +1706,7 @@ void renderImGui() {
         ImGui::TreePop();
     }
 
-    if (ImGui::Button("Perlin noise")) {
+    if (ImGui::Button("Noise Algorithm")) {
 
         if (g_fault_mode == 10) {
             g_perl_nbOfIterations = 1;
@@ -1720,24 +1720,40 @@ void renderImGui() {
 
     ImGui::ProgressBar(1.f - g_perl_nbOfIterations / (float) g_perl_nbOfIterations_max, ImVec2(0, 20));
 
-    if (ImGui::TreeNode("Parameters perlin noise")) {
+    if (ImGui::TreeNode("Parameters noise")) {
 
-        //if (ImGui::RadioButton("Perlin", &g_noise_type, "perlin")) {
-        //}
-        //ImGui::SameLine();
+        ImGui::Spacing();
+        ImGui::Text("Type of noise");
+        ImGui::Spacing();
 
-        if (ImGui::RadioButton("Layer 1", &g_perl_layer, 0)) {
+
+        if (ImGui::RadioButton("Random", &g_noise_type, 0)) {
         }
         ImGui::SameLine();
 
-        if (ImGui::RadioButton("Layer 2", &g_perl_layer, 1)) {
+        if (ImGui::RadioButton("Perlin", &g_noise_type, 1)) {
+        }
+
+        ImGui::Spacing();
+        ImGui::Text("First layer to apply noise");
+        ImGui::Spacing();
+
+
+        if (ImGui::RadioButton("Layer 0", &g_perl_layer, 0)) {
         }
         ImGui::SameLine();
 
-        if (ImGui::RadioButton("Layer 3", &g_perl_layer, 2)) {
+        if (ImGui::RadioButton("Layer 1", &g_perl_layer, 1)) {
         }
+        ImGui::SameLine();
+
+        if (ImGui::RadioButton("Layer 2", &g_perl_layer, 2)) {
+        }
+
         ImGui::SliderInt("Number of iterations", &g_perl_niter, 1, 1000);
-        ImGui::SliderFloat("Max noise", &g_max_noise, 0, 10.f);
+        ImGui::SliderFloat("Max noise", &g_max_noise, 0, 0.5);
+
+        
 
         ImGui::TreePop();
     }
@@ -1965,7 +1981,7 @@ int main(int argc, char ** argv) {
         }
 
         if (g_perl_nbOfIterations > 0) {
-            mesh->applyNoise(1, g_perl_layer, g_max_noise, "perlin");
+            mesh->applyNoise(1, g_perl_layer, g_max_noise, g_noise_type);
             g_perl_nbOfIterations -= 1;
         }
         
