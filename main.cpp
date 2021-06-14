@@ -80,7 +80,7 @@ unsigned int g_perl_nbOfIterations_max = 1;
 int g_perl_niter = 1;
 int g_noise_type = 0; //0 : random, 1 : perlin
 int g_perl_layer = 1;
-float g_max_noise = 0.2f;
+float g_max_noise = 0.05;
 std::vector<float> noiseVector;
 
 
@@ -180,7 +180,7 @@ public:
     void applyNoise(const int& n_iter, int layerID, float maxNoise, int typeNoise);
     void setPerlinNoiseVector(float maxNoise);
     float getLocalNoise(int i, int j, int typeNoise, float maxNoise, int layerID);
-    void fractionalBrownianMotion(int i, int j, int typeNoise, float maxNoise, int layerID);
+    float fractionalBrownianMotion(int i, int j, float maxNoise, int layerID, int numberOfOctaves);
 
 
 private:
@@ -1244,9 +1244,11 @@ void Mesh::setPerlinNoiseVector(float maxNoise) {
 
 }
 
+
 float Mesh::getLocalNoise(int i, int j, int typeNoise, float maxNoise, int layerID) {
 
     float noise = 0;
+   
 
     //pour le fractional brownian motion, si on dépasse la grille avec les fréquences on fait une boucle
     int k = i % m_gridHeight;
@@ -1264,32 +1266,8 @@ float Mesh::getLocalNoise(int i, int j, int typeNoise, float maxNoise, int layer
     return noise;
 }
 
-void Mesh::applyNoise(const int& n_iter, int layerID, float maxNoise, int typeNoise) {
-    
-    for (int n = 0; n < n_iter; n++)
-    {
-        //on créé la carte de bruit de perlin à chaque itération
-        if (typeNoise==1) setPerlinNoiseVector(maxNoise);
 
-        for (int i = 0; i < m_gridHeight; i++)
-        {
-            for (int j = 0; j < m_gridWidth; j++)
-            {
-                
-                float noise = getLocalNoise(i, j, typeNoise, maxNoise, layerID);
-                
-                float newThickness = mesh->getLayerThickness(layerID, i, j) + noise;
-                if (newThickness < 0) mesh->setLayerThickness(0, layerID, i, j);
-                else mesh->setLayerThickness(newThickness, layerID, i, j);
-            }
-        }
-    }
-    mesh->init();
-    
-}
-
-void fractionalBrownianMotion(int i, int j, int typeNoise, float maxNoise, int layerID) {
-    int numberOfOctaves = 4;
+float Mesh::fractionalBrownianMotion(int i, int j, float maxNoise, int layerID, int numberOfOctaves) {
     float lacunarity = 2;
     float attenuation = 0.5;
     float noise = 0;
@@ -1299,10 +1277,37 @@ void fractionalBrownianMotion(int i, int j, int typeNoise, float maxNoise, int l
 
     for (unsigned int k = 0; k < numberOfOctaves; k++)
     {
-        noise += amplitude * mesh->getLocalNoise(frequency * i, frequency * j, typeNoise, maxNoise, layerID);
+        noise += amplitude * getLocalNoise(frequency * i, frequency * j, 1, maxNoise, layerID); //on le fait sur le bruit de perlin
         frequency *= lacunarity;
         amplitude *= attenuation;
     }
+
+    return noise;
+}
+
+void Mesh::applyNoise(const int& n_iter, int layerID, float maxNoise, int typeNoise) {
+
+    for (int n = 0; n < n_iter; n++)
+    {
+        //on créé la carte de bruit de perlin à chaque itération si le bruit est perlin ou fractional brownian motion 
+        if (typeNoise != 0) setPerlinNoiseVector(maxNoise);
+
+        for (int i = 0; i < m_gridHeight; i++)
+        {
+            for (int j = 0; j < m_gridWidth; j++)
+            {
+                float noise = 0;
+                if (typeNoise != 2) noise = getLocalNoise(i, j, typeNoise, maxNoise, layerID); //perlin ou random
+                else noise = fractionalBrownianMotion(i, j, maxNoise, layerID, 10); //fractional brownian motion
+
+                float newThickness = mesh->getLayerThickness(layerID, i, j) + noise;
+                if (newThickness < 0) mesh->setLayerThickness(0, layerID, i, j);
+                else mesh->setLayerThickness(newThickness, layerID, i, j);
+            }
+        }
+    }
+    mesh->init();
+
 }
 
 
@@ -1736,7 +1741,10 @@ void renderImGui() {
 
         if (ImGui::RadioButton("Perlin", &g_noise_type, 1)) {
         }
+        ImGui::SameLine();
 
+        if (ImGui::RadioButton("Fractional Brownian Motion", &g_noise_type, 2)) {
+        }
         ImGui::Spacing();
         ImGui::Text("First layer to apply noise");
         ImGui::Spacing();
@@ -1754,7 +1762,7 @@ void renderImGui() {
         }
 
         ImGui::SliderInt("Number of iterations", &g_perl_niter, 1, 1000);
-        ImGui::SliderFloat("Max noise", &g_max_noise, 0, 0.5);
+        ImGui::SliderFloat("Max noise", &g_max_noise, 0, 0.1);
 
         
 
