@@ -82,6 +82,7 @@ int g_noise_type = 0; //0 : random, 1 : perlin
 int g_perl_layer = 1;
 float g_max_noise = 0.05;
 std::vector<float> noiseVector;
+std::vector<glm::vec2> randomGradients; //liste de gradients random de norme 1
 
 
 int g_layer = 1;
@@ -178,9 +179,9 @@ public:
     void applyFault(const int& mode, const int& n_iter, const float& _dy );
     std::vector<std::string> getLayersFileNames();
     void applyNoise(const int& n_iter, int layerID, float maxNoise, int typeNoise);
-    void setPerlinNoiseVector(float maxNoise);
-    float getLocalNoise(int i, int j, int typeNoise, float maxNoise, int layerID);
-    float fractionalBrownianMotion(int i, int j, float maxNoise, int layerID, int numberOfOctaves);
+    void createGridPerlinNoise();
+    float perlinNoise(float x, float y);
+    float fractionalBrownianMotion(float x, float y, int numberOfOctaves);
 
 
 private:
@@ -1187,15 +1188,12 @@ void Mesh::applyFault(const int& mode, const int& n_iter, const float& _dy) {
     mesh->init();
 }
 
+void Mesh::createGridPerlinNoise() {
 
-void Mesh::setPerlinNoiseVector(float maxNoise) {
-
-    //si le vecteur est vide écrit dedans (pour ne pas ré écrire plein de fois)
-    noiseVector.clear();
+    randomGradients.clear();
 
     int newGridWidth = m_gridWidth + 1;
     int newGridHeight = m_gridHeight + 1;
-    std::vector<glm::vec2> randomGradients; //liste de gradients random de norme 1
 
     for (unsigned int i = 0; i < newGridHeight; i++)
     {
@@ -1206,68 +1204,59 @@ void Mesh::setPerlinNoiseVector(float maxNoise) {
             randomGradients.push_back(randomGradient);
         }
     }
-
-    for (unsigned int i = 0; i < m_gridHeight; i++)
-    {
-        for (unsigned int j = 0; j < m_gridWidth; j++)
-        {
-            glm::vec2 centerCurrentCell(j + m_cellWidth / 2, i + m_cellHeight / 2); //notre sommet du mesh
-            float meanDot = 0;
-            //on regarde les 4 sommets autour du centre
-            int leftX = (int)centerCurrentCell.x;
-            int rightX = leftX + 1;
-            int topY = (int)centerCurrentCell.y;
-            int bottomY = topY + 1;
-
-            glm::vec2 offsetBottomRight(m_cellWidth / 2, m_cellHeight / 2); //offset pour le sommet en bas à droite
-            glm::vec2 gradientBottomRight(randomGradients.at(rightX + bottomY * newGridWidth)); //gradient du sommet en bas à droite
-            meanDot += glm::dot(offsetBottomRight, gradientBottomRight);
-
-            glm::vec2 offsetTopLeft(-m_cellWidth / 2, -m_cellHeight / 2);
-            glm::vec2 gradientTopLeft(randomGradients.at(leftX + topY * newGridWidth));
-            meanDot += glm::dot(offsetTopLeft, gradientTopLeft);
-
-            glm::vec2 offsetBottomLeft(-m_cellWidth / 2, m_cellHeight / 2);
-            glm::vec2 gradientBottomLeft(randomGradients.at(leftX + bottomY * newGridWidth));
-            meanDot += glm::dot(offsetBottomLeft, gradientBottomLeft);
-
-            glm::vec2 offsetTopRight(m_cellWidth / 2, -m_cellHeight / 2);
-            glm::vec2 gradientTopRight(randomGradients.at(rightX + topY * newGridWidth));
-            meanDot += glm::dot(offsetTopRight, gradientTopRight);
-
-            meanDot /= 4; //meanDot représente le bruit à ajouter, c'est une valeur entre -sqrt((cellWidth/2)²+(cellHeight/2)²) et +sqrt((cellWidth/2)²+(cellHeight/2)²)
-
-            float noise = maxNoise * meanDot / sqrt((m_cellWidth * m_cellWidth / 4) + (m_cellHeight * m_cellHeight / 4)); //entre -maxNoise et maxNoise
-            noiseVector.push_back(noise);
-        }
-    }
-
 }
 
+float Mesh::perlinNoise(float x, float y) {
 
-float Mesh::getLocalNoise(int i, int j, int typeNoise, float maxNoise, int layerID) {
+    glm::vec2 vertex(x,y); //notre sommet du mesh
 
-    float noise = 0;
-   
+    int newGridWidth = m_gridWidth + 1;
 
-    //pour le fractional brownian motion, si on dépasse la grille avec les fréquences on fait une boucle
-    int k = i % m_gridHeight;
-    int l = j % m_gridWidth;
+    //le début de la grille de notre mesh (de la forme i,j) pour que la grille des gradients commencent en même temps on va décaler les indices
+    glm::vec2 topLeftGrid(-5, -5);
+    float deltaWidth = -topLeftGrid.x;
+    float deltaHeight = -topLeftGrid.y;
 
-    if (typeNoise == 0) {
-        noise = 2 * maxNoise * ((float) rand() / RAND_MAX) - maxNoise; //bruit entre -maxNoise et maxNoise  
-    }
+    //on regarde les 4 coins de la grille autour du sommet
+    int leftJ = (int)vertex.x + deltaWidth;
+    int rightJ = leftJ + 1 + deltaWidth;
+    int topI = (int)vertex.y + deltaHeight;
+    int bottomI = topI + 1 + deltaHeight;
 
-    if (typeNoise == 1) {
-        
-        noise = noiseVector.at(k * m_gridWidth + l); //bruit entre -maxNoise et maxNoise
-    }
+    glm::vec2 topRight(rightJ, topI);
+    glm::vec2 bottomRight(rightJ, bottomI);
+    glm::vec2 topLeft(leftJ, topI);
+    glm::vec2 bottomLeft(leftJ, bottomI);
+
+    //Coefficients d'interpolation
+    float dx = x - leftJ;
+    float dy = y - topI;
+
+    //calcul des produits scalaires
+    glm::vec2 offsetTopRight(topRight - vertex);
+    glm::vec2 gradientTopRight(randomGradients.at(rightJ + topI * newGridWidth));
+    float dotTopRight = glm::dot(offsetTopRight, gradientTopRight);
+
+    glm::vec2 offsetBottomRight(bottomRight - vertex);
+    glm::vec2 gradientBottomRight(randomGradients.at(rightJ + bottomI * newGridWidth)); //gradient du sommet en bas à droite
+    float dotBottomRight = glm::dot(offsetBottomRight, gradientBottomRight);
+
+    glm::vec2 offsetTopLeft(topLeft-vertex);
+    glm::vec2 gradientTopLeft(randomGradients.at(leftJ + topI * newGridWidth));
+    float dotTopLeft = glm::dot(offsetTopLeft, gradientTopLeft);
+    
+    glm::vec2 offsetBottomLeft(bottomLeft - vertex);
+    glm::vec2 gradientBottomLeft(randomGradients.at(leftJ + bottomI * newGridWidth));
+    float dotBottomLeft = glm::dot(offsetBottomLeft, gradientBottomLeft);
+
+    //interpolation bilinéaire sur la grille
+    float noise = dx * dy * dotBottomRight + dx * (1 - dy) * dotTopRight + dy * (1 - dx) * dotBottomLeft + (1 - dy) * (1 - dx) * dotTopLeft;
 
     return noise;
 }
 
 
-float Mesh::fractionalBrownianMotion(int i, int j, float maxNoise, int layerID, int numberOfOctaves) {
+float Mesh::fractionalBrownianMotion(float x, float y, int numberOfOctaves) {
     float lacunarity = 2;
     float attenuation = 0.5;
     float noise = 0;
@@ -1277,7 +1266,7 @@ float Mesh::fractionalBrownianMotion(int i, int j, float maxNoise, int layerID, 
 
     for (unsigned int k = 0; k < numberOfOctaves; k++)
     {
-        noise += amplitude * getLocalNoise(frequency * i, frequency * j, 1, maxNoise, layerID); //on le fait sur le bruit de perlin
+        noise += amplitude * perlinNoise(x,y); //on le fait sur le bruit de perlin
         frequency *= lacunarity;
         amplitude *= attenuation;
     }
@@ -1290,17 +1279,32 @@ void Mesh::applyNoise(const int& n_iter, int layerID, float maxNoise, int typeNo
     for (int n = 0; n < n_iter; n++)
     {
         //on créé la carte de bruit de perlin à chaque itération si le bruit est perlin ou fractional brownian motion 
-        if (typeNoise != 0) setPerlinNoiseVector(maxNoise);
+        if (typeNoise != 0) createGridPerlinNoise();
+
+        int indexVertex= 0;
 
         for (int i = 0; i < m_gridHeight; i++)
         {
             for (int j = 0; j < m_gridWidth; j++)
             {
                 float noise = 0;
-                if (typeNoise != 2) noise = getLocalNoise(i, j, typeNoise, maxNoise, layerID); //perlin ou random
-                else noise = fractionalBrownianMotion(i, j, maxNoise, layerID, 10); //fractional brownian motion
+
+                if (typeNoise == 0) noise = 2 * ((float)rand() / RAND_MAX) - 1; //random : bruit entre -1 et 1;
+
+                float x = m_vertexPositions[indexVertex];
+                indexVertex += 2;
+                float y = m_vertexPositions[indexVertex]; //y correspond au z de m_vertexPositions
+
+
+                if (typeNoise == 1) noise = perlinNoise(x,y); //perlin : bruit entre -1 et 1;
+
+                if (typeNoise == 2) noise = fractionalBrownianMotion(x, y, 10); //fractional brownian motion 
+
+                //map noise :
+                noise *= maxNoise;
 
                 float newThickness = mesh->getLayerThickness(layerID, i, j) + noise;
+                if (newThickness > 1) mesh->setLayerThickness(1, layerID, i, j);
                 if (newThickness < 0) mesh->setLayerThickness(0, layerID, i, j);
                 else mesh->setLayerThickness(newThickness, layerID, i, j);
             }
@@ -1762,7 +1766,7 @@ void renderImGui() {
         }
 
         ImGui::SliderInt("Number of iterations", &g_perl_niter, 1, 1000);
-        ImGui::SliderFloat("Max noise", &g_max_noise, 0, 0.1);
+        ImGui::SliderFloat("Max noise", &g_max_noise, 0, 1.f);
 
         
 
