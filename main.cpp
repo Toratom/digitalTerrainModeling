@@ -1025,20 +1025,19 @@ float Mesh::waterArriving(unsigned int i, unsigned int j) const
 void Mesh::hydraulicErosion(unsigned int N, float dt) {
     //terrain height : b
     //water height : d
-    //suspended sediment amout : s
+    //suspended sediment amount : s
     //outflow flux f
     //velocity v
 
     float g = 9.81f;
     glm::vec4 flux;
-
-    float b, d, dh, K, dV;
+    float b, d, dh, K, dV, dW;
     float A = m_cellWidth * m_cellHeight;
     float dtAg = dt * A * g;
 
 
     for (unsigned int k=0; k < N; k++) {
-        //Il faut faire des blouces sur i et j des int et pas unsigned int car i - 1 peut-être négatif quand i = 0 !!
+        //Il faut faire des boucles sur i et j des int et pas unsigned int car i - 1 peut-être négatif quand i = 0 !!
         for (int i = 0; i < m_gridHeight; i++) {
             for (int j = 0; j < m_gridWidth; j++) {
                 //Water increment
@@ -1070,6 +1069,13 @@ void Mesh::hydraulicErosion(unsigned int N, float dt) {
                 flux = getLayersFlux(i, j);
                 dV = dt * (getLayersFlux(i - 1, j).x + getLayersFlux(i, j + 1).y + getLayersFlux(i + 1, j).w + getLayersFlux(i, j - 1).z - flux.x - flux.y - flux.z - flux.w);
                 setLayerThickness(getLayerThickness(m_nbOfLayers - 1, i, j) + dV / A, m_nbOfLayers - 1, i, j);
+            }
+        }
+
+        //Water Surface
+        for (int i = 0; i < m_gridHeight; i++) {
+            for (int j = 0; j < m_gridWidth; j++) {
+                dW = (getLayersFlux(i - 1, j).x + getLayersFlux(i, j + 1).y + getLayersFlux(i + 1, j).w + getLayersFlux(i, j - 1).z) / 2;
             }
         }
     }
