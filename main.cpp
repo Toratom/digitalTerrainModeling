@@ -1012,7 +1012,7 @@ void init() {
     initGLFW();
     initOpenGL();
     //Pour l'instant ne fonctionne qu'en mode 1 layer...
-    mesh = new Mesh({ "../data/simpleB.png", "../data/simpleStr.png" }, 
+    mesh = new Mesh({ "../data/simpleB.png", "../data/simpleStr2.png" }, 
         { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f)},
         { 0.f , 0.3f},
         { 0.f, 0.3f},
@@ -1053,7 +1053,7 @@ int main(int argc, char ** argv) {
     init(); // Your initialization code (user interface, OpenGL states, scene with geometry, material, lights, etc)
 
     GLuint swapBuff = 0;
-    unsigned int nbOfIt = 100000;
+    unsigned int nbOfIt = 1;
     while(!glfwWindowShouldClose(g_window)) {
         if (nbOfIt > 0) {
             //Phase de calculs :
