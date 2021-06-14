@@ -173,6 +173,8 @@ public:
     void setLayersFlux(float value, unsigned int k, unsigned int i, unsigned int j);
     glm::vec4 getLayersFlux(int i, int j);
     void setLayersFlux(glm::vec4 values, unsigned int i, unsigned int j);
+    glm::vec2 getLayersVelocity(int i, int j); 
+    void setLayersVelocity(glm::vec2 values, unsigned int i, unsigned int j);
     float waterArriving(unsigned int i, unsigned int j) const;
     void applyNThermalErosion(unsigned int N, float thetaLimit, float erosionCoeff, float dt, bool neighbourReceiver, bool descentDirection, bool typeErosion, bool connexity8, bool strategyB);
     void applyFault(const int& mode, const int& n_iter, const float& _dy );
@@ -195,6 +197,7 @@ private:
     std::vector<float> m_layersThickness;
     std::vector<glm::vec3> m_layersColor;
     std::vector<glm::vec4> m_layersFlux; //Top, Left, Right, Bottom
+    std::vector<glm::vec2> m_layersVelocity;
 
     std::vector<float> m_vertexPositions;
     std::vector<float> m_vertexNormals;
@@ -1021,6 +1024,16 @@ float Mesh::waterArriving(unsigned int i, unsigned int j) const
     return 0.f;
 }
 
+glm::vec2 Mesh::getLayersVelocity(int i, int j) {
+    if (i < 0 || i >= m_gridHeight || j < 0 || j >= m_gridWidth) return glm::vec2(0.f);
+
+    return m_layersVelocity[i * m_gridWidth + j];
+}
+
+void Mesh::setLayersVelocity(glm::vec2 values, unsigned int i, unsigned int j) {
+    m_layersVelocity[i * m_gridWidth + j] = values;
+}
+
 void Mesh::hydraulicErosion(unsigned int N, float dt) {
     //terrain height : b
     //water height : d
@@ -1030,7 +1043,7 @@ void Mesh::hydraulicErosion(unsigned int N, float dt) {
 
     float g = 9.81f;
     glm::vec4 flux;
-    float b, d, dh, K, dV, dW;
+    float b, d, dh, K, dV, dWx, dWy, u, v, d2, d_;
     float A = m_cellWidth * m_cellHeight;
     float dtAg = dt * A * g;
 
@@ -1067,14 +1080,14 @@ void Mesh::hydraulicErosion(unsigned int N, float dt) {
             for (int j = 0; j < m_gridWidth; j++) {
                 flux = getLayersFlux(i, j);
                 dV = dt * (getLayersFlux(i - 1, j).x + getLayersFlux(i, j + 1).y + getLayersFlux(i + 1, j).w + getLayersFlux(i, j - 1).z - flux.x - flux.y - flux.z - flux.w);
-                setLayerThickness(getLayerThickness(m_nbOfLayers - 1, i, j) + dV / A, m_nbOfLayers - 1, i, j);
-            }
-        }
-
-        //Water Surface
-        for (int i = 0; i < m_gridHeight; i++) {
-            for (int j = 0; j < m_gridWidth; j++) {
-                dW = (getLayersFlux(i - 1, j).x + getLayersFlux(i, j + 1).y + getLayersFlux(i + 1, j).w + getLayersFlux(i, j - 1).z) / 2;
+                d2 = getLayerThickness(m_nbOfLayers - 1, i, j) + dV / A;
+                setLayerThickness(d2, m_nbOfLayers - 1, i, j);
+                d_ = getLayerThickness(m_nbOfLayers - 1, i, j) * d2;
+                dWx = getLayersFlux(i, j - 1).y - getLayersFlux(i, j).z + getLayersFlux(i, j).y - getLayersFlux(i, j + 1).z;
+                dWy = getLayersFlux(i + 1, j).x - getLayersFlux(i, j).w + getLayersFlux(i, j).x - getLayersFlux(i - 1, j).w;
+                u = dWy / (d_ * m_cellHeight);
+                v = dWy / (d_ * m_cellWidth);
+                setLayersVelocity(glm::vec2(u, v), i, j);
             }
         }
     }
