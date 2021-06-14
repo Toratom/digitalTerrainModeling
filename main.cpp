@@ -62,7 +62,7 @@ unsigned int g_nbOfIterations_t = 0;
 unsigned int g_nbOfIterations_t_max = 1;
 
 float g_dt_h = 0.0500;
-int g_iter_h = 500;
+int g_iter_h = 5;
 unsigned int g_nbOfIterations_h = 0;
 unsigned int g_nbOfIterations_h_max = 1;
 
@@ -176,6 +176,8 @@ public:
     void setLayersFlux(glm::vec4 values, unsigned int i, unsigned int j);
     glm::vec2 getLayersVelocity(int i, int j); 
     void setLayersVelocity(glm::vec2 values, unsigned int i, unsigned int j);
+    float getLayersSediment(int i, int j);
+    void setLayersSediment(float values, unsigned int i, unsigned int j);
     float waterArriving(unsigned int i, unsigned int j) const;
     void applyNThermalErosion(unsigned int N, float thetaLimit, float erosionCoeff, float dt, bool neighbourReceiver, bool descentDirection, bool typeErosion, bool connexity8, bool strategyB);
     void applyFault(const int& mode, const int& n_iter, const float& _dy );
@@ -199,6 +201,7 @@ private:
     std::vector<glm::vec3> m_layersColor;
     std::vector<glm::vec4> m_layersFlux; //Top, Left, Right, Bottom
     std::vector<glm::vec2> m_layersVelocity;
+    std::vector<float> m_layersSediment;
 
     std::vector<float> m_vertexPositions;
     std::vector<float> m_vertexNormals;
@@ -230,9 +233,9 @@ void Mesh::init() {
     unsigned int ind = 0;
     for (int i = 0; i < m_gridHeight; i++) {
         for (int j = 0; j < m_gridWidth; j++) {//On calcule les vecteurs normaux, en utilisant le gradient de la fonction d'élévation
-            grad = getGradient(i, j, true); //Met a true car affiche l'eau
+            grad = getGradient(i, j, false); //Met a true car affiche l'eau
             normal = glm::normalize(glm::vec3(-grad.y, 1, -grad.x)); //On fait attention bien mettre dans bon ordre i.e. derive par rapport à x, correspond à derive par rapport à j...
-            color = m_layersColor[getTopLayerId(i, j)];
+            color = m_layersColor[getTerrainTopLayerId(i, j)];
             //glm::vec2 gradN = (grad.x >0 && grad.y > 0) ? glm::normalize(grad) : grad;
             //color.x = 1 / 2.f * (gradN.x + 1);
             //color.y = 1 / 2.f * (gradN.y + 1);
@@ -245,7 +248,7 @@ void Mesh::init() {
             m_vertexColors[ind] = color.x;
             ind += 1;
 
-            m_vertexPositions[ind] = getH(i, j); //y
+            m_vertexPositions[ind] = getTerrainH(i, j); //y
             m_vertexNormals[ind] = normal.y;
             m_vertexColors[ind] = color.y;
             ind += 1;
@@ -375,6 +378,8 @@ Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec
 
             m_layersThickness.resize(m_nbOfLayers * m_gridWidth * m_gridHeight);
             m_layersFlux.resize(4 * m_gridWidth * m_gridHeight);
+            m_layersVelocity.resize(2 * m_gridWidth * m_gridHeight);
+            m_layersSediment.resize(m_gridWidth * m_gridHeight);
             m_vertexPositions.resize(3 * m_gridWidth * m_gridHeight);
             m_vertexNormals.resize(3 * m_gridWidth * m_gridHeight);
             m_vertexColors.resize(3 * m_gridWidth * m_gridHeight);
@@ -393,7 +398,7 @@ Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec
             for (int i = 0; i < height; i++) {
                 for (int j = 0; j < width; j++) {
                     m_layersFlux[j + width * i] = glm::vec4(0.f, 0.f, 0.f, 0.f);
-                    m_layersFlux[j + width * i] = glm::vec4(0.f, 0.f, 0.f, 0.f);
+                    m_layersVelocity[j + width * i] = glm::vec2(0.f, 0.f);
                 }
             }
         }
@@ -1035,6 +1040,16 @@ void Mesh::setLayersVelocity(glm::vec2 values, unsigned int i, unsigned int j) {
     m_layersVelocity[i * m_gridWidth + j] = values;
 }
 
+float Mesh::getLayersSediment(int i, int j) {
+    if (i < 0 || i >= m_gridHeight || j < 0 || j >= m_gridWidth) return 0.f;
+
+    return m_layersSediment[i * m_gridWidth + j];
+}
+
+void Mesh::setLayersSediment(float values, unsigned int i, unsigned int j) {
+    m_layersSediment[i * m_gridWidth + j] = values;
+}
+
 void Mesh::hydraulicErosion(unsigned int N, float dt) {
     //terrain height : b
     //water height : d
@@ -1044,7 +1059,10 @@ void Mesh::hydraulicErosion(unsigned int N, float dt) {
 
     float g = 9.81f;
     glm::vec4 flux;
-    float b, d, dh, K, dV, dWx, dWy, u, v, d2, d_;
+    float b, d, dh, K, dV, dWx, dWy, u, v, d2, d_, C, st;
+    float kc = 0.01f;
+    float ks = 0.1f;
+    float kd = 0.1f;
     float A = m_cellWidth * m_cellHeight;
     float dtAg = dt * A * g;
 
@@ -1076,19 +1094,45 @@ void Mesh::hydraulicErosion(unsigned int N, float dt) {
             }
         }
 
-        //Water Surface
+        //Erosion
         for (int i = 0; i < m_gridHeight; i++) {
             for (int j = 0; j < m_gridWidth; j++) {
                 flux = getLayersFlux(i, j);
                 dV = dt * (getLayersFlux(i - 1, j).x + getLayersFlux(i, j + 1).y + getLayersFlux(i + 1, j).w + getLayersFlux(i, j - 1).z - flux.x - flux.y - flux.z - flux.w);
                 d2 = getLayerThickness(m_nbOfLayers - 1, i, j) + dV / A;
+                d_ = getLayerThickness(m_nbOfLayers - 1, i, j) + d2;
                 setLayerThickness(d2, m_nbOfLayers - 1, i, j);
-                d_ = getLayerThickness(m_nbOfLayers - 1, i, j) * d2;
+                //std::cout << d_ << std::endl;
+
                 dWx = getLayersFlux(i, j - 1).y - getLayersFlux(i, j).z + getLayersFlux(i, j).y - getLayersFlux(i, j + 1).z;
                 dWy = getLayersFlux(i + 1, j).x - getLayersFlux(i, j).w + getLayersFlux(i, j).x - getLayersFlux(i - 1, j).w;
-                u = dWy / (d_ * m_cellHeight);
-                v = dWy / (d_ * m_cellWidth);
+                if (d_ < 0) {
+                    u, v = 0;
+                } else {
+                    u = dWy / (d_ * m_cellHeight);
+                    v = dWy / (d_ * m_cellWidth);
+                }
+
+                //std::cout << u << " " << v << std::endl;
+
                 setLayersVelocity(glm::vec2(u, v), i, j);
+                C = kc * glm::length(getLayersVelocity(i, j));
+                //std::cout << getLayersVelocity(i, j).x << std::endl;
+                //std::cout << u << " " << v <<  " " << C << std::endl;
+
+                st = getLayersSediment(i, j);
+
+                if (C > st) {
+                    setLayerThickness(getLayerThickness(m_nbOfLayers - 2, i, j) - ks * (C - st), m_nbOfLayers - 2, i, j);
+                    setLayersSediment(st + ks * (C - st), i, j);
+                    //std::cout << ks * (C - st) << std::endl;
+                } else {
+                    setLayerThickness(getLayerThickness(m_nbOfLayers - 2, i, j) + kd * (st - C), m_nbOfLayers - 2, i, j);
+                    setLayersSediment(st - ks * (st - C), i, j);
+                    //std::cout << ks * (st - C) << std::endl;
+
+                }
+                //std::cout << C << " " << st << std::endl;
             }
         }
     }
