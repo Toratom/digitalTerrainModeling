@@ -19,7 +19,7 @@ layout(std430, binding = 1) writeonly buffer ThickW {
 	float ThicknessW[][NB_OF_LAYERS];
 };
 
-uniform uint gridHeight, gridWidth; 
+uniform int gridHeight, gridWidth; 
 //Mettre aussi la taille d'une cellule
 
 layout(local_size_x = PATCH_HEIGHT, local_size_y = PATCH_WIDTH, local_size_z = 1) in;
@@ -29,9 +29,8 @@ layout(local_size_x = PATCH_HEIGHT, local_size_y = PATCH_WIDTH, local_size_z = 1
 
 uint getIndex(int i, int j) {
 	//i, j peuvent être en dehors de la grille, pas un probleme car clamp
-	uint iC = uint(clamp(i, 0, gridHeight));
-	uint jC = uint(clamp(j, 0, gridWidth));
-	//ivec2 xyC = clamp(ivec2(i, j), vec2(0, 0), vec2(gridHeight, gridWidth)); //Permet de ne pas se poser de question quand 
+	int iC = clamp(i, 0, gridHeight - 1);
+	int jC = clamp(j, 0, gridWidth - 1);
 	return gridWidth * iC + jC;
 }
 

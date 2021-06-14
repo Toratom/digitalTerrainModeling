@@ -8,7 +8,7 @@ layout(location = 3) in vec4 vColor;
 
 out vec3 fPos;
 out vec3 fNormal;
-out vec3 fColor;
+out vec4 fColor;
 
 uniform mat4 viewMat, projMat, modelMat;
 uniform uint nbOfLayers;
@@ -23,7 +23,7 @@ void main() {
     fPos = vec3(modelMat*vec4(vPosition, 1.0));
 
     //fColor = vec3(fNormal.x, fNormal.y, fNormal.z);
-    fColor = vColor.xyz;
+    fColor = vColor;
 
     //fTexCoord = vTexCoord;
 }

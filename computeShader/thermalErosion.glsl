@@ -9,13 +9,13 @@ layout(std430, binding = 1) writeonly buffer ThickW {
 	float ThicknessW[][NB_OF_LAYERS];
 };
 
-uniform uint gridHeight, gridWidth; 
+uniform int gridHeight, gridWidth; 
 uniform float cellHeight, cellWidth, dt;
 uniform float erosionCoeffs[NB_OF_LAYERS];
 uniform float thetasLimit[NB_OF_LAYERS];
 
 const ivec2 offset = ivec2(1, 1);
-const int indexOfSand = NB_OF_LAYERS - 1;
+const int indexOfSand = NB_OF_LAYERS - 2;
 const ivec2 neighborTranslations[8] = ivec2[8](
 	ivec2(-1, -1),
 	ivec2(-1, 0),
@@ -35,22 +35,23 @@ layout(local_size_x = PATCH_HEIGHT, local_size_y = PATCH_WIDTH, local_size_z = 1
 
 uint getIndex(int i, int j) {
 	//i, j peuvent être en dehors de la grille, pas un probleme car clamp
-	uint iC = uint(clamp(i, 0, gridHeight));
-	uint jC = uint(clamp(j, 0, gridWidth));
-	//ivec2 xyC = clamp(ivec2(i, j), vec2(0, 0), vec2(gridHeight, gridWidth)); //Permet de ne pas se poser de question quand 
+	int iC = clamp(i, 0, gridHeight - 1);
+	int jC = clamp(j, 0, gridWidth - 1);
 	return gridWidth * iC + jC;
 }
 
 float getHeight(int i, int j) {
+	//Thermal Erosion du hauteur du terrain sans eau d'ou NB_OF_LAYERS - 1
 	float h = 0;
-	for (uint k = 0; k < NB_OF_LAYERS; k += 1) {
+	for (uint k = 0; k < NB_OF_LAYERS - 1; k += 1) {
 		h += ThicknessR[getIndex(i , j)][k];
 	}
 	return h;
 }
 
 uint getTopLayerId(int i, int j) {
-	uint id = NB_OF_LAYERS - 1; //A modifier quand on met l'eau, parametre de la fonction a mettre en uniforme ?
+	//Thermal Erosion du hauteur du terrain sans eau d'ou NB_OF_LAYERS - 2
+	uint id = NB_OF_LAYERS - 2;
 	while (ThicknessR[getIndex(i, j)][id] == 0. && id > 0) {
 		id = id - 1;
 	}

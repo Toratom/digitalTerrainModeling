@@ -51,7 +51,7 @@
 
 #define PATCH_HEIGHT 32
 #define PATCH_WIDTH 32
-#define NB_OF_LAYERS 2
+#define NB_OF_LAYERS 3
 unsigned int g_nbGroupsX = 0;
 unsigned int g_nbGroupsY = 0;
 
@@ -63,15 +63,13 @@ int g_windowHeight = 768;
 GLFWwindow* g_window2 = nullptr;
 
 //Simulation parameters
-float g_thetaLimit_t = 0.3;
-float g_erosionCoeff_t = 0.3;
-float g_dt_t = 0.0500;
+float g_dt_t = 0.00500;
 
 
 //GPU objects - Program
 GLuint g_program = 0; // A GPU program contains at least a vertex shader and a fragment shader
 GLuint g_computeProgram = 0; //GPU program for compute shader
-GLuint g_computeForRenderingTerrain = 0;
+GLuint g_computeForRendering = 0;
 //GPU objects - Buffers
 //GLuint g_colVbo = 0;
 GLuint g_gridPosVbo = 0; //Un vbo qui donne le z (i) et x (j) des points de la grille
@@ -138,7 +136,7 @@ glm::vec3 g_baseRot(0.0);
 //Mesh
 class Mesh {
 public:
-    Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec3> layersColor, 
+    Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec4> layersColor, 
         const std::vector<float> layersErosionCoeffs, const std::vector<float> layersThetasLimit,
         const glm::vec4& corners, const glm::vec2& e);
     const std::vector<unsigned int>& getTriangleIndices() const;
@@ -164,7 +162,7 @@ private:
     glm::vec2 m_gridTopLeftCorner;
     glm::vec2 m_gridBottomRightCorner;
     std::vector<float> m_layersThickness;
-    std::vector<glm::vec3> m_layersColor;
+    std::vector<glm::vec4> m_layersColor;
     std::vector<float> m_layersErosionCoeffs;
     std::vector<float> m_layersThetaLimits;
     std::vector<glm::vec2> m_gridPositions;
@@ -181,15 +179,16 @@ Mesh* mesh;
 
 std::vector<float> Mesh::getLayersColor() const {
     std::vector<float> tmp;
-    tmp.resize(3 * NB_OF_LAYERS);
+    tmp.resize(4 * NB_OF_LAYERS);
     unsigned int k2 = 0;
-    glm::vec3 currentColor;
+    glm::vec4 currentColor;
     for (unsigned int k1 = 0; k1 < NB_OF_LAYERS; k1++) {
         currentColor = m_layersColor[k1];
-        k2 = 3 * k1;
+        k2 = 4 * k1;
         tmp[k2] = currentColor.x;
         tmp[k2 + 1] = currentColor.y;
         tmp[k2 + 2] = currentColor.z;
+        tmp[k2 + 3] = currentColor.w;
     }
     return tmp;
 }
@@ -329,7 +328,7 @@ unsigned char* Mesh::loadHeightMapFromFile(const std::string& filename, int& wid
     return gray_img;
 }
 
-Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec3> layersColor,
+Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec4> layersColor,
     const std::vector<float> layersErosionCoeffs, const std::vector<float> layersThetasLimit,
     const glm::vec4& corners, const glm::vec2& e) {
     int width = 0, height = 0, channels = 0;
@@ -644,6 +643,8 @@ void initOpenGL() {
 
     //glCullFace(GL_BACK); // specifies the faces to cull (here the ones pointing away from the camera)
     //glEnable(GL_CULL_FACE); // enables face culling (based on the orientation defined by the cw/ccw enumeration).
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); //Prend le alpha de l'eau et melange avec le fond en (1 - alpha)
     glDepthFunc(GL_LESS);   // Specify the depth test for the z-buffer
     glEnable(GL_DEPTH_TEST);      // Enable the z-buffer test in the rasterization
     glClearColor(0.7f, 0.7f, 0.7f, 1.0f); // specify the background color, used any time the framebuffer is cleared
@@ -768,25 +769,25 @@ void initGPUprograms() {
     CheckGlErrors("Thermal Erosion 2");
 
     //Program for computing normals, height, color of each point of the grid
-    g_computeForRenderingTerrain = glCreateProgram();
-    shaderSourceString = file2String("../computeShader/computeForRenderingTerrain.glsl");
+    g_computeForRendering = glCreateProgram();
+    shaderSourceString = file2String("../computeShader/computeForRendering.glsl");
     //Ajout de l'entête
     shaderSourceString = computeShaderHeader + shaderSourceString;
-    loadShader(g_computeForRenderingTerrain, GL_COMPUTE_SHADER, shaderSourceString, "Compute for rendering terrain");
-    glLinkProgram(g_computeForRenderingTerrain);
-    CheckGlErrors("Compute for rendering terrain Shader 1");
-    glGetProgramiv(g_computeForRenderingTerrain, GL_LINK_STATUS, &status);
+    loadShader(g_computeForRendering, GL_COMPUTE_SHADER, shaderSourceString, "Compute for rendering");
+    glLinkProgram(g_computeForRendering);
+    CheckGlErrors("Compute for rendering Shader 1");
+    glGetProgramiv(g_computeForRendering, GL_LINK_STATUS, &status);
     if (status == GL_FALSE)
     {
         std::cout << "Link failed Compute for rendering terrain Shader" << std::endl;
-        glGetProgramiv(g_computeForRenderingTerrain, GL_INFO_LOG_LENGTH, &logLength);
+        glGetProgramiv(g_computeForRendering, GL_INFO_LOG_LENGTH, &logLength);
         GLchar* log = new GLchar[logLength];
-        glGetProgramInfoLog(g_computeForRenderingTerrain, logLength, NULL, log);
+        glGetProgramInfoLog(g_computeForRendering, logLength, NULL, log);
         std::cout << "Log (len) " << logLength << " : " << log << std::endl;
         delete[] log;
         exit(1);
     }
-    CheckGlErrors("Compute for rendering terrain Shader 2");
+    CheckGlErrors("Compute for rendering Shader 2");
 
 
     //Calcul des dims de l'espace d'invocation
@@ -801,45 +802,43 @@ void initBuffersAndUniforms() {
     glUseProgram(g_computeProgram); //Il faut "bind" le program afin de pouvoir set des variables uniforme avec glUniform...
     GLint loc = glGetUniformLocation(g_computeProgram, "gridHeight");
     if (loc == -1) std::cout << "ERROR WITH UNIFORM gridHeight CP" << std::endl;
-    glUniform1ui(loc, mesh->getGridHeight());
+    glUniform1i(loc, mesh->getGridHeight());
     loc = glGetUniformLocation(g_computeProgram, "gridWidth");
     if (loc == -1) std::cout << "ERROR WITH UNIFORM gridWidth CP" << std::endl;
-    glUniform1ui(loc, mesh->getGridWidth());
+    glUniform1i(loc, mesh->getGridWidth());
     loc = glGetUniformLocation(g_computeProgram, "cellHeight");
     if (loc == -1) std::cout << "ERROR WITH UNIFORM cellHeight CP" << std::endl;
     glUniform1f(loc, mesh->getCellHeight());
     loc = glGetUniformLocation(g_computeProgram, "cellWidth");
     if (loc == -1) std::cout << "ERROR WITH UNIFORM cellWidth CP" << std::endl;
     glUniform1f(loc, mesh->getCellWidth());
-
     loc = glGetUniformLocation(g_computeProgram, "erosionCoeffs");
     if (loc == -1) std::cout << "ERROR WITH UNIFORM erosionCoeffs CP" << std::endl;
     glUniform1fv(loc, NB_OF_LAYERS, mesh->getLayersErosionCoeffs().data());
     loc = glGetUniformLocation(g_computeProgram, "thetasLimit");
     if (loc == -1) std::cout << "ERROR WITH UNIFORM thetasLimit CP" << std::endl;
     glUniform1fv(loc, NB_OF_LAYERS, mesh->getLayersThetaLimit().data());
-
     loc = glGetUniformLocation(g_computeProgram, "dt");
     if (loc == -1) std::cout << "ERROR WITH UNIFORM dt CP" << std::endl;
     glUniform1f(loc, g_dt_t);
     glUseProgram(0);
 
-    glUseProgram(g_computeForRenderingTerrain); //Il faut "bind" le program afin de pouvoir set des variables uniforme avec glUniform...
-    loc = glGetUniformLocation(g_computeForRenderingTerrain, "gridHeight");
+    glUseProgram(g_computeForRendering); //Il faut "bind" le program afin de pouvoir set des variables uniforme avec glUniform...
+    loc = glGetUniformLocation(g_computeForRendering, "gridHeight");
     if (loc == -1) std::cout << "ERROR WITH UNIFORM gridHeight R" << std::endl;
-    glUniform1ui(loc, mesh->getGridHeight());
-    loc = glGetUniformLocation(g_computeForRenderingTerrain, "gridWidth");
+    glUniform1i(loc, mesh->getGridHeight());
+    loc = glGetUniformLocation(g_computeForRendering, "gridWidth");
     if (loc == -1) std::cout << "ERROR WITH UNIFORM gridWidth R" << std::endl;
-    glUniform1ui(loc, mesh->getGridWidth());
-    loc = glGetUniformLocation(g_computeForRenderingTerrain, "cellHeight");
+    glUniform1i(loc, mesh->getGridWidth());
+    loc = glGetUniformLocation(g_computeForRendering, "cellHeight");
     if (loc == -1) std::cout << "ERROR WITH UNIFORM cellHeight R" << std::endl;
     glUniform1f(loc, mesh->getCellHeight());
-    loc = glGetUniformLocation(g_computeForRenderingTerrain, "cellWidth");
+    loc = glGetUniformLocation(g_computeForRendering, "cellWidth");
     if (loc == -1) std::cout << "ERROR WITH UNIFORM cellWidth R" << std::endl;
     glUniform1f(loc, mesh->getCellWidth());
-    loc = glGetUniformLocation(g_computeForRenderingTerrain, "layersColor");
+    loc = glGetUniformLocation(g_computeForRendering, "layersColor");
     if (loc == -1) std::cout << "ERROR WITH UNIFORM layersColor R" << std::endl;
-    glUniform3fv(loc, NB_OF_LAYERS, mesh->getLayersColor().data());
+    glUniform4fv(loc, NB_OF_LAYERS, mesh->getLayersColor().data());
     glUseProgram(0);
 
     std::cout << "---INIT UNIFORMS DONE---" << std::endl;
@@ -1011,12 +1010,19 @@ void initImGui() {
 void init() {
     initGLFW();
     initOpenGL();
-    //Pour l'instant ne fonctionne qu'en mode 1 layer...
-    mesh = new Mesh({ "../data/simpleB.png", "../data/simpleStr2.png" }, 
-        { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f)},
-        { 0.f , 0.3f},
-        { 0.f, 0.3f},
-        glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
+
+    //mesh = new Mesh({ "../data/bedrock.png", "../data/sand.png", "../data/bedrock2.png" }, 
+    //    { glm::vec4(120.f / 255.f, 135.f / 255.f, 124.f / 255.f, 1.f), glm::vec4(148.f / 255.f, 124.f / 255.f, 48.f / 255.f, 1.f), glm::vec4(20.f / 255.f, 107.f / 255.f, 150.f / 255.f, 0.5f) },
+    //    { 0.f , 0.3f, 0.f},
+    //    { 0.f, 0.3f, 0.f},
+    //    glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
+    mesh = new Mesh({ "../data/simpleB.png", "../data/sand-with-water.png", "../data/water-around-sand.png" },
+        { glm::vec4(120.f / 255.f, 135.f / 255.f, 124.f / 255.f, 1.f), glm::vec4(148.f / 255.f, 124.f / 255.f, 48.f / 255.f, 1.f), glm::vec4(20.f / 255.f, 107.f / 255.f, 150.f / 255.f, 0.5f) },
+        { 0.f , 0.3f, 0.f },
+        { 0.f, 0.3f, 0.f },
+        glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
+                                                               
+                                                               
     //g_sunID = loadTextureFromFileToGPU("../data/heightmap3.jpg");
     initGPUprograms(); //Init aussi les dimension de l'espace d'invocation
     initBuffersAndUniforms(); //Aprs gpu programs car fait aussi uniform
@@ -1036,8 +1042,6 @@ void clear() {
 
 // The main rendering call
 void render() {
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Erase the color and z buffers.
-
     const glm::mat4 viewMatrix = g_camera.computeViewMatrix();
     const glm::mat4 projMatrix = g_camera.computeProjectionMatrix();
     const glm::vec3 camPosition = g_camera.getPosition();
@@ -1051,10 +1055,13 @@ void render() {
 
 int main(int argc, char ** argv) {
     init(); // Your initialization code (user interface, OpenGL states, scene with geometry, material, lights, etc)
-
+    
+    GLint loc = 0;
     GLuint swapBuff = 0;
-    unsigned int nbOfIt = 1;
+    unsigned int nbOfIt = 1000000;
     while(!glfwWindowShouldClose(g_window)) {
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Erase the color and z buffers.
+
         if (nbOfIt > 0) {
             //Phase de calculs :
             glUseProgram(g_computeProgram);
@@ -1070,24 +1077,45 @@ int main(int argc, char ** argv) {
             g_gridLayersHeightVboR = g_gridLayersHeightVboW;
             g_gridLayersHeightVboW = swapBuff;
 
-            //Update avant render terrain (normales et hauteur)
-            glUseProgram(g_computeForRenderingTerrain);
-            //Bind les buffer du compute shader :
-            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, g_gridLayersHeightVboR);
-            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, g_gridNormalsVbo);
-            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, g_gridHeightsVbo);
-            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, g_gridColorsVbo);
-            //Appelle au compute shader
-            glDispatchCompute(g_nbGroupsX, g_nbGroupsY, 1); //Dimension 2D de l'espace d'invocation x correspond à i et y à j
-            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-
             nbOfIt -= 1;
         }
 
 
-        //Phase de rendering :
+        //Phase de rendering du terrain:
+        //Update avant render (normales et hauteur)
+        glUseProgram(g_computeForRendering);
+        loc = glGetUniformLocation(g_computeForRendering, "renderWater");
+        glUniform1i(loc, false);
+        //Bind les buffer du compute shader :
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, g_gridLayersHeightVboR);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, g_gridNormalsVbo);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, g_gridHeightsVbo);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, g_gridColorsVbo);
+        //Appelle au compute shader
+        glDispatchCompute(g_nbGroupsX, g_nbGroupsY, 1); //Dimension 2D de l'espace d'invocation x correspond à i et y à j
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
         glUseProgram(g_program);
         render();
+
+        ////Phase de rendering de l'eau:
+        ////Update avant render (normales et hauteur)
+        glUseProgram(g_computeForRendering);
+        loc = glGetUniformLocation(g_computeForRendering, "renderWater");
+        glUniform1i(loc, true);
+        //Bind les buffer du compute shader :
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, g_gridLayersHeightVboR);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, g_gridNormalsVbo);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, g_gridHeightsVbo);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, g_gridColorsVbo);
+        //Appelle au compute shader
+        glDispatchCompute(g_nbGroupsX, g_nbGroupsY, 1); //Dimension 2D de l'espace d'invocation x correspond à i et y à j
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+        glUseProgram(g_program);
+        render();
+
+
         renderImGui();
 
         glfwSwapBuffers(g_window);
