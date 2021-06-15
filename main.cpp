@@ -1161,7 +1161,7 @@ void Mesh::hydraulicErosion(unsigned int N, float dt, float k[3]) {
                 //C = kc * glm::length(glm::vec2(u, v));
                 grad = glm::length(getGradient(i, j, false));
                 sin_alpha = grad / sqrt(grad * grad + 1);
-                C = kc * (sin_alpha + 0.15f) * std::max(0.15f, glm::length(glm::vec2(u, v))) * getLayerThickness(m_nbOfLayers - 1, i, j) / (g_h_max - g_h_min);
+                C = kc * (sin_alpha + 0.01f) * std::max(0.01f, glm::length(glm::vec2(u, v))) * getLayerThickness(m_nbOfLayers - 1, i, j) / (g_h_max - g_h_min);
                 //std::cout << getLayersVelocity(i, j).x << std::endl;
                 //std::cout << u << " " << v <<  " " << C << std::endl;
 
@@ -1187,8 +1187,8 @@ void Mesh::hydraulicErosion(unsigned int N, float dt, float k[3]) {
 
         for (int i = 0; i < m_gridHeight; i++) {
             for (int j = 0; j < m_gridWidth; j++) {
-                //vel = getLayersVelocity(i, j);
-                //setLayersSediment(getLayersSediment((int) (i + vel.x * dt), (int) (j - vel.y * dt)), i, j);
+                vel = getLayersVelocity(i, j);
+                setLayersSediment(getLayersSediment((int) (i + vel.x * dt), (int) (j - vel.y * dt)), i, j);
             }
         }
     }
@@ -2072,7 +2072,7 @@ void init() {
     initOpenGL();
     //mesh = new Mesh({ "../data/heightmap5.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f)}, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 1.f)); //cpu
     //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png", "../data/simpleB.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
-    mesh = new Mesh({ "../data/simpleB.png", "../data/sand-with-water.png","../data/sand-with-water.png" }, { glm::vec4(120.f / 255.f, 135.f / 255.f, 124.f / 255.f, 1.f), glm::vec4(148.f / 255.f, 124.f / 255.f, 48.f / 255.f, 1.f), glm::vec4(20.f / 255.f, 107.f / 255.f, 150.f / 255.f, 0.1f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
+    mesh = new Mesh({ "../data/simpleB.png", "../data/sand-with-water.png","../data/sand-with-water.png" }, { glm::vec4(120.f / 255.f, 135.f / 255.f, 124.f / 255.f, 1.f), glm::vec4(148.f / 255.f, 124.f / 255.f, 48.f / 255.f, 1.f), glm::vec4(39.f / 255.f, 112.f / 255.f, 125.f / 255.f, 100.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
     //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleStr.png","../data/simpleB.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
     //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleW.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(20.f / 255.f, 107.f / 255.f, 150.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 1.f)); //cpu
     initGPUprogram();
