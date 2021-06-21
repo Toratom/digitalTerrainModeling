@@ -75,6 +75,7 @@ int g_iter_h = 500;
 unsigned int g_nbOfIterations_h = 0;
 unsigned int g_nbOfIterations_h_max = 1;
 bool g_waterarriving = true;
+bool g_water_render = true;
 float g_water_flow = 10.f;
 int g_water_coords[2] = {50, 50};
 float g_k_h[3] = {0.03f, 0.03f, 0.03f};
@@ -1172,6 +1173,7 @@ void Mesh::hydraulicErosion(unsigned int N, float dt, float k[3]) {
                 //std::cout << u << " " << v <<  " " << C << std::endl;
 
                 st = getLayersSediment(i, j);
+                //float hh = 1.f / getLayerThickness(m_nbOfLayers - 1, i, j);
 
                 if (C > st) {
                     setLayerThickness(getLayerThickness(1, i, j) - ks * (C - st), 1, i, j);
@@ -1195,6 +1197,7 @@ void Mesh::hydraulicErosion(unsigned int N, float dt, float k[3]) {
             for (int j = 0; j < m_gridWidth; j++) {
                 vel = getLayersVelocity(i, j);
                 setLayersSediment(getLayersSediment((int) (i + vel.x * dt), (int) (j - vel.y * dt)), i, j);
+                //std::cout << (int) (i + vel.x * dt) << " " << vel.x << " " << dt << std::endl;
             }
         }
     }
@@ -2014,6 +2017,11 @@ void renderImGui() {
         if (ImGui::RadioButton("Layer 2", &g_layer, 2)) {
         }
 
+        if (ImGui::Button("Remove")) {
+            if (g_water_render) g_water_render = false;
+            else g_water_render = true;
+        }
+
         if (ImGui::Button("Add")) {
 
             int width, height, channels;
@@ -2033,7 +2041,7 @@ void renderImGui() {
                 std::vector<glm::vec4> colors = mesh->getLayersColors();
                 colors[g_layer] = glm::vec4(colorAdd[0], colorAdd[1], colorAdd[2], colorAdd[3]);
                 mesh = new Mesh(fileNames, colors, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(g_h_min, g_h_max));
-                //mesh->init();
+               
             }
         }
 
@@ -2190,9 +2198,10 @@ int main(int argc, char ** argv) {
         mesh->init(false);
         render();
 
-        mesh->init(true);
-        render();
-
+        if (g_water_render) {
+            mesh->init(true);
+            render();
+        } 
 
         renderImGui();
 
