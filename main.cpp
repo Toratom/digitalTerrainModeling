@@ -93,6 +93,7 @@ unsigned int g_perl_nbOfIterations_max = 1;
 int g_perl_niter = 1;
 int g_noise_type = 0; //0 : random, 1 : perlin
 int g_perl_layer = 1;
+int g_map_thickness = 1; //1 = true
 int g_max_height_perlin = 2;
 int g_min_height_perlin = 0;
 float g_max_noise = g_h_max*3/2;
@@ -194,7 +195,7 @@ public:
     void applyNThermalErosion(unsigned int N, float thetaLimit, float erosionCoeff, float dt, bool neighbourReceiver, bool descentDirection, bool typeErosion, bool connexity8, bool strategyB);
     void applyFault(const int& mode, const int& n_iter, const float& _dy );
     std::vector<std::string> getLayersFileNames();
-    void applyNoise(const int& n_iter, int layerID, float maxNoise, int typeNoise, int numberOfOctaves);
+    void applyNoise(const int& n_iter, int layerID, float maxNoise, int typeNoise, int numberOfOctaves, bool mapThickness);
     void createGridPerlinNoise();
     float perlinNoise(float x, float y,int resolutionX, int resolutionY);
     float fractionalBrownianMotion(float x, float y, int numberOfOctaves);
@@ -1166,7 +1167,7 @@ void Mesh::hydraulicErosion(unsigned int N, float dt, float k[3]) {
                 //C = kc * glm::length(glm::vec2(u, v));
                 grad = glm::length(getGradient(i, j, false));
                 sin_alpha = grad / sqrt(grad * grad + 1);
-                C = kc * (sin_alpha + 0.01f) * std::max(0.01f, glm::length(glm::vec2(u, v))) * getLayerThickness(m_nbOfLayers - 1, i, j) / (g_h_max - g_h_min);
+                C = kc * (sin_alpha + 5.f) * std::max(0.01f, glm::length(glm::vec2(u, v))) * getLayerThickness(m_nbOfLayers - 1, i, j) / (g_h_max - g_h_min);
                 //std::cout << getLayersVelocity(i, j).x << std::endl;
                 //std::cout << u << " " << v <<  " " << C << std::endl;
 
@@ -1414,7 +1415,7 @@ float Mesh::fractionalBrownianMotion(float x, float y, int numberOfOctaves) {
     return noise;
 }
 
-void Mesh::applyNoise(const int& n_iter, int layerID, float maxNoise, int typeNoise, int numberOfOctaves) {
+void Mesh::applyNoise(const int& n_iter, int layerID, float maxNoise, int typeNoise, int numberOfOctaves, bool mapThickness) {
 
     for (int n = 0; n < n_iter; n++)
     {
@@ -1447,22 +1448,29 @@ void Mesh::applyNoise(const int& n_iter, int layerID, float maxNoise, int typeNo
                 float newThickness = mesh->getLayerThickness(layerID, i, j) + noise;
 
                 //on sauvegarde pour mapper entre l'épaisseur min et max après
-                newThicknessTab.push_back(newThickness);
+                if (mapThickness) newThicknessTab.push_back(newThickness);
+                else {
+                    if (newThickness< g_h_min) mesh->setLayerThickness(g_h_min, layerID, i, j);
+                    if (newThickness > g_h_max) mesh->setLayerThickness(g_h_max, layerID, i, j);
+                    mesh->setLayerThickness(newThickness, layerID, i, j);
+                }
             }
         }
+        if (mapThickness) {
+            //on map l'épaisseur entre le min et le max
+            float minThickness = *std::min_element(newThicknessTab.begin(), newThicknessTab.end());
+            float maxThickness = *std::max_element(newThicknessTab.begin(), newThicknessTab.end());
 
-        //on map l'épaisseur entre le min et le max
-        float minThickness = *std::min_element(newThicknessTab.begin(), newThicknessTab.end());
-        float maxThickness = *std::max_element(newThicknessTab.begin(), newThicknessTab.end());
-
-        for (int i = 0; i < m_gridHeight; i++)
-        {
-            for (int j = 0; j < m_gridWidth; j++)
+            for (int i = 0; i < m_gridHeight; i++)
             {
-                float newThickness = (g_max_height_perlin - g_min_height_perlin)*(newThicknessTab.at(j + i * m_gridWidth)-minThickness)/(maxThickness-minThickness)+ g_min_height_perlin;
-                mesh->setLayerThickness(newThickness, layerID, i, j);
+                for (int j = 0; j < m_gridWidth; j++)
+                {
+                    float newThickness = (g_max_height_perlin - g_min_height_perlin) * (newThicknessTab.at(j + i * m_gridWidth) - minThickness) / (maxThickness - minThickness) + g_min_height_perlin;
+                    mesh->setLayerThickness(newThickness, layerID, i, j);
+                }
             }
         }
+        
     }
     //mesh->init();
 
@@ -1913,6 +1921,17 @@ void renderImGui() {
 
         if (ImGui::RadioButton("Fractional Brownian Motion", &g_noise_type, 2)) {
         }
+
+        ImGui::Spacing();
+        ImGui::Text("Map thickness");
+        ImGui::Spacing();
+
+        if (ImGui::RadioButton("No", &g_map_thickness, 0)) {
+        }
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Yes", &g_map_thickness, 1)) {
+        }
+
         ImGui::Spacing();
         ImGui::Text("Layer to apply noise");
         ImGui::Spacing();
@@ -2110,10 +2129,8 @@ void init() {
     initGLFW();
     initOpenGL();
     //mesh = new Mesh({ "../data/heightmap5.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f)}, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 1.f)); //cpu
-    //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png", "../data/simpleB.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
-    mesh = new Mesh({ "../data/simpleB.png", "../data/sand-with-water.png","../data/sand-with-water.png" }, { glm::vec4(120.f / 255.f, 135.f / 255.f, 124.f / 255.f, 1.f), glm::vec4(148.f / 255.f, 124.f / 255.f, 48.f / 255.f, 1.f), glm::vec4(39.f / 255.f, 112.f / 255.f, 125.f / 255.f, 100.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
-    //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleStr.png","../data/simpleB.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
-    //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleW.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(20.f / 255.f, 107.f / 255.f, 150.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 1.f)); //cpu
+    //mesh = new Mesh({ "../data/simpleB.png", "../data/sand-with-water.png","../data/sand-with-water.png" }, { glm::vec4(120.f / 255.f, 135.f / 255.f, 124.f / 255.f, 1.f), glm::vec4(148.f / 255.f, 124.f / 255.f, 48.f / 255.f, 1.f), glm::vec4(39.f / 255.f, 112.f / 255.f, 125.f / 255.f, 100.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
+    mesh = new Mesh({ "../data/simpleB.png","../data/heightmap3_100.jpg", "../data/water_source.jpg" }, { glm::vec4(120.f / 255.f, 135.f / 255.f, 124.f / 255.f, 1.f), glm::vec4(148.f / 255.f, 124.f / 255.f, 48.f / 255.f, 1.f), glm::vec4(39.f / 255.f, 112.f / 255.f, 125.f / 255.f, 100.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
     initGPUprogram();
     //g_sunID = loadTextureFromFileToGPU("../data/heightmap3.jpg");
     //mesh->init(); //gpu
@@ -2166,7 +2183,7 @@ int main(int argc, char ** argv) {
         }
 
         if (g_perl_nbOfIterations > 0) {
-            mesh->applyNoise(1, g_perl_layer, g_max_noise, g_noise_type, g_number_octaves);
+            mesh->applyNoise(1, g_perl_layer, g_max_noise, g_noise_type, g_number_octaves,g_map_thickness);
             g_perl_nbOfIterations -= 1;
         }
         
