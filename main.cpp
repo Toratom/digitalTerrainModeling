@@ -42,16 +42,24 @@
 
 #define PI 3.141592
 
+
+int g_layer = 1;
+float g_h_min = 0.f;
+float g_h_max = 2.f;
+float g_dy = 0.5f;
+
 // Window parameters
 GLFWwindow *g_window = nullptr;
 int g_windowWidth = 1024;
 int g_windowHeight = 768;
 
 //Simulation parameters
+
+//Thermal erosion
 float g_thetaLimit_t = 0.3;
 float g_erosionCoeff_t = 0.3;
 float g_dt_t = 0.0500;
-int g_iter_t = 5;
+int g_iter_t = 500;
 int g_strategyErosion_t = 0; //stratégie A
 int g_typeErosion_t = 1; //Layer breaks into sand
 int g_connexity_t = 0; // 4 connexité
@@ -61,10 +69,16 @@ int g_neighbourReceiver_t = 0; //all neighbors
 unsigned int g_nbOfIterations_t = 0;
 unsigned int g_nbOfIterations_t_max = 1;
 
+//Hydraulic erosion
 float g_dt_h = 0.0500;
 int g_iter_h = 500;
 unsigned int g_nbOfIterations_h = 0;
 unsigned int g_nbOfIterations_h_max = 1;
+bool g_waterarriving = true;
+bool g_water_render = true;
+float g_water_flow = 10.f;
+int g_water_coords[2] = {50, 50};
+float g_k_h[3] = {10.f, 0.5f, 0.000001f};
 
 //Fault parameters
 int g_fault_mode = 2;
@@ -74,10 +88,21 @@ int g_fault_circlemode = 0;
 unsigned int g_fault_nbOfIterations = 0;
 unsigned int g_fault_nbOfIterations_max = 1;
 
-int g_layer = 1;
-float g_h_min = 0.f;
-float g_h_max = 2.f;
-float g_dy = 0.5f;
+//Perlin parameters
+unsigned int g_perl_nbOfIterations = 0;
+unsigned int g_perl_nbOfIterations_max = 1;
+int g_perl_niter = 1;
+int g_noise_type = 0; //0 : random, 1 : perlin
+int g_perl_layer = 1;
+int g_map_thickness = 1; //1 = true
+int g_max_height_perlin = 2;
+int g_min_height_perlin = 0;
+float g_max_noise = g_h_max*3/2;
+int g_resolutionX = 1;
+int g_resolutionY = 1;
+std::vector<float> noiseVector;
+std::vector<glm::vec2> randomGradients; //liste de gradients random de norme 1
+int g_number_octaves = 10;
 
 GLFWwindow* g_window2 = nullptr;
 
@@ -136,10 +161,10 @@ glm::vec3 g_baseRot(0.0);
 //Mesh
 class Mesh {
 public:
-    Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec3> layersColor, const glm::vec4& corners, const glm::vec2& e);
+    Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec4> layersColor, const glm::vec4& corners, const glm::vec2& e);
     Mesh(const int nbOfLayers, const int width, const int height, const int mode, const std::vector<glm::vec3> layersColor, const glm::vec4& corners, const glm::vec2& e);
 
-    void init(); //Génère la surface à partir des différentes épaisseur de niveau, ces normales, puis envoie l'info au GPU
+    void init(bool withWater); //Génère la surface à partir des différentes épaisseur de niveau, ces normales, puis envoie l'info au GPU
     void render();
     unsigned int getIndex(unsigned int k, unsigned int i, unsigned int j);
     float getH(int i, int j) const; //Donne la hauteur du terrain eau comprise, autorise indice negatif grace au clamping
@@ -154,19 +179,27 @@ public:
     float getJDerivate(int i, int j, bool withWater) const; //Derive par rapport à j (X)
     glm::vec2 getGradient(int i, int j, bool withWater) const;
     void setLayersColors(int layer, float color[]);
-    std::vector<glm::vec3> getLayersColors();
+    std::vector<glm::vec4> getLayersColors();
     std::vector<glm::uvec2> getAllLowNeighbors(int i, int j, bool connexity8) const;
     void thermalErosionA(float thetaLimit,float erosionCoeff,float dt, bool neighbourReceiver, bool descentDirection, bool typeErosion, bool connexity8);
     void thermalErosionB(float thetaLimit, float erosionCoeff, float dt, bool connexity8);
-    void hydraulicErosion(unsigned int N, float dt);
+    void hydraulicErosion(unsigned int N, float dt, float k[3]);
     //float Mesh::getLayersFlux(unsigned int k, unsigned int i, unsigned int j);
     void setLayersFlux(float value, unsigned int k, unsigned int i, unsigned int j);
     glm::vec4 getLayersFlux(int i, int j);
     void setLayersFlux(glm::vec4 values, unsigned int i, unsigned int j);
+    glm::vec2 getLayersVelocity(int i, int j); 
+    void setLayersVelocity(glm::vec2 values, unsigned int i, unsigned int j);
+    float getLayersSediment(int i, int j);
+    void setLayersSediment(float values, unsigned int i, unsigned int j);
     float waterArriving(unsigned int i, unsigned int j) const;
     void applyNThermalErosion(unsigned int N, float thetaLimit, float erosionCoeff, float dt, bool neighbourReceiver, bool descentDirection, bool typeErosion, bool connexity8, bool strategyB);
     void applyFault(const int& mode, const int& n_iter, const float& _dy );
     std::vector<std::string> getLayersFileNames();
+    void applyNoise(const int& n_iter, int layerID, float maxNoise, int typeNoise, int numberOfOctaves, bool mapThickness);
+    void createGridPerlinNoise();
+    float perlinNoise(float x, float y,int resolutionX, int resolutionY);
+    float fractionalBrownianMotion(float x, float y, int numberOfOctaves);
 
 
 private:
@@ -179,8 +212,10 @@ private:
     float m_cellHeight = 0;
     std::vector<std::string> m_layersFileNames;
     std::vector<float> m_layersThickness;
-    std::vector<glm::vec3> m_layersColor;
+    std::vector<glm::vec4> m_layersColor;
     std::vector<glm::vec4> m_layersFlux; //Top, Left, Right, Bottom
+    std::vector<glm::vec2> m_layersVelocity;
+    std::vector<float> m_layersSediment;
 
     std::vector<float> m_vertexPositions;
     std::vector<float> m_vertexNormals;
@@ -200,7 +235,7 @@ private:
 //Mesh CPU
 Mesh* mesh;
 
-void Mesh::init() {
+void Mesh::init(bool withWater) {
     //Update cpu
     float ax = m_gridTopLeftCorner.x; //a coin en haut gauche
     float az = m_gridTopLeftCorner.y;
@@ -208,13 +243,18 @@ void Mesh::init() {
     float bz = m_gridBottomRightCorner.y;
     glm::vec2 grad(0.f, 0.f);
     glm::vec3 normal(0.f, 0.f, 0.f);
-    glm::vec3 color(0.f, 0.f, 0.f);
+    glm::vec4 color(0.f, 0.f, 0.f, 0.f);
     unsigned int ind = 0;
+    unsigned int ind_c = 0;
+    float h = 0.f;
     for (int i = 0; i < m_gridHeight; i++) {
         for (int j = 0; j < m_gridWidth; j++) {//On calcule les vecteurs normaux, en utilisant le gradient de la fonction d'élévation
-            grad = getGradient(i, j, true); //Met a true car affiche l'eau
+            grad = getGradient(i, j, withWater); //Met a true car affiche l'eau
             normal = glm::normalize(glm::vec3(-grad.y, 1, -grad.x)); //On fait attention bien mettre dans bon ordre i.e. derive par rapport à x, correspond à derive par rapport à j...
-            color = m_layersColor[getTopLayerId(i, j)];
+            color = m_layersColor[getTerrainTopLayerId(i, j)];
+            if (withWater) {
+                color = m_layersColor[getTopLayerId(i, j)];
+            }
             //glm::vec2 gradN = (grad.x >0 && grad.y > 0) ? glm::normalize(grad) : grad;
             //color.x = 1 / 2.f * (gradN.x + 1);
             //color.y = 1 / 2.f * (gradN.y + 1);
@@ -224,18 +264,34 @@ void Mesh::init() {
 
             m_vertexPositions[ind] = (ax + (bx - ax) * j / (m_gridWidth - 1)); //x
             m_vertexNormals[ind] = normal.x;
-            m_vertexColors[ind] = color.x;
+            m_vertexColors[ind_c] = color.x;
             ind += 1;
+            ind_c += 1;
 
-            m_vertexPositions[ind] = getH(i, j); //y
+            // = getTerrainH(i, j); //y
+            if (withWater) {
+                h = getH(i, j);
+                if (getTopLayerId(i, j) < m_nbOfLayers - 1) {
+                    h -= 0.001f;
+                }
+            } else {
+                h = getTerrainH(i, j);
+            }
+
+            m_vertexPositions[ind] = h;
             m_vertexNormals[ind] = normal.y;
-            m_vertexColors[ind] = color.y;
+            m_vertexColors[ind_c] = color.y;
             ind += 1;
+            ind_c += 1;
 
             m_vertexPositions[ind] = (az + (bz - az) * i / (m_gridWidth - 1)); //z
             m_vertexNormals[ind] = normal.z;
-            m_vertexColors[ind] = color.z;
+            m_vertexColors[ind_c] = color.z;
             ind += 1;
+            ind_c += 1;
+
+            m_vertexColors[ind_c] = color.w;
+            ind_c += 1;
         }
     }
 
@@ -245,6 +301,7 @@ void Mesh::init() {
     //Update buffer des normales
     glNamedBufferSubData(m_normalVbo, 0, vertexBufferSize, m_vertexNormals.data());
     //Update buffer des couleur
+    vertexBufferSize = sizeof(float) * m_vertexColors.size();
     glNamedBufferSubData(m_colVbo, 0, vertexBufferSize, m_vertexColors.data());
 
     //Buffer for texture
@@ -259,7 +316,7 @@ void Mesh::init() {
 
 void Mesh::setLayersColors(int layer, float color[]) {
     std::cout << color[0] << " " << color[1] << std::endl;
-    m_layersColor[layer] = glm::vec3(color[0], color[1], color[2]);
+    m_layersColor[layer] = glm::vec4(color[0], color[1], color[2], color[3]);
 
 }
 
@@ -267,7 +324,7 @@ std::vector<std::string> Mesh::getLayersFileNames() {
     return m_layersFileNames;
 };
 
-std::vector<glm::vec3> Mesh::getLayersColors() {
+std::vector<glm::vec4> Mesh::getLayersColors() {
     return m_layersColor;
 };
 
@@ -332,7 +389,7 @@ unsigned char* Mesh::loadHeightMapFromFile(const std::string& filename, int& wid
 }
 
 
-Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec3> layersColor, const glm::vec4& corners, const glm::vec2& e) {
+Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec4> layersColor, const glm::vec4& corners, const glm::vec2& e) {
     int width = 0, height = 0, channels = 0;
     m_nbOfLayers = filenames.size();
     m_layersColor = layersColor;
@@ -357,9 +414,11 @@ Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec
 
             m_layersThickness.resize(m_nbOfLayers * m_gridWidth * m_gridHeight);
             m_layersFlux.resize(4 * m_gridWidth * m_gridHeight);
+            m_layersVelocity.resize(2 * m_gridWidth * m_gridHeight);
+            m_layersSediment.resize(m_gridWidth * m_gridHeight);
             m_vertexPositions.resize(3 * m_gridWidth * m_gridHeight);
             m_vertexNormals.resize(3 * m_gridWidth * m_gridHeight);
-            m_vertexColors.resize(3 * m_gridWidth * m_gridHeight);
+            m_vertexColors.resize(4 * m_gridWidth * m_gridHeight);
 
             for (int i = 0; i < m_gridWidth * m_gridHeight - m_gridWidth; i++) {
                 if (i % m_gridWidth != m_gridWidth - 1) {
@@ -375,7 +434,7 @@ Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec
             for (int i = 0; i < height; i++) {
                 for (int j = 0; j < width; j++) {
                     m_layersFlux[j + width * i] = glm::vec4(0.f, 0.f, 0.f, 0.f);
-                    m_layersFlux[j + width * i] = glm::vec4(0.f, 0.f, 0.f, 0.f);
+                    m_layersVelocity[j + width * i] = glm::vec2(0.f, 0.f);
                 }
             }
         }
@@ -428,11 +487,12 @@ Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), 0);
 
     //Buffer for color
+    vertexBufferSize = sizeof(float) * m_vertexColors.size();
     glCreateBuffers(1, &m_colVbo);
     glNamedBufferStorage(m_colVbo, vertexBufferSize, NULL, GL_DYNAMIC_STORAGE_BIT); // Create a data storage on the GPU
     glBindBuffer(GL_ARRAY_BUFFER, m_colVbo);
     glEnableVertexAttribArray(2);
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), 0);
+    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), 0);
 
     //Buffer for texture
     //size_t vertexBufferSize3 = sizeof(float) * m_vertexTexCoords.size(); // Gather the size of the buffer from the CPU-side vector
@@ -681,7 +741,11 @@ float Mesh::getIDerivate(int i, int j, bool withWater) const {
     }
     
     //return (getTerrainH(i, j) - getTerrainH(i - 1, j)) / m_cellHeight;
-    return ((this->*computeH)(i + 1, j) - (this->*computeH)(i - 1, j)) / (2.f * m_cellHeight);
+    if (g_typeGradient_t == 0) return ((this->*computeH)(i + 1, j) - (this->*computeH)(i - 1, j)) / (2.f * m_cellHeight);
+
+    else if (g_typeGradient_t == 1) return ((this->*computeH)(i, j) - (this->*computeH)(i-1, j)) / m_cellHeight;
+
+    else return ((this->*computeH)(i+1, j) - (this->*computeH)(i, j)) / m_cellHeight;
 }
 
 float Mesh::getJDerivate(int i, int j, bool withWater) const {
@@ -699,7 +763,11 @@ float Mesh::getJDerivate(int i, int j, bool withWater) const {
     }
 
     //return (getTerrainH(i, j) - getTerrainH(i, j - 1)) / m_cellWidth;
-    return ((this->*computeH)(i, j + 1) - (this->*computeH)(i, j - 1)) / (2.f * m_cellWidth);
+    if (g_typeGradient_t==0) return ((this->*computeH)(i, j + 1) - (this->*computeH)(i, j - 1)) / (2.f * m_cellWidth);
+
+    else if (g_typeGradient_t==1) return ((this->*computeH)(i, j) - (this->*computeH)(i, j - 1)) / m_cellWidth;
+
+    else return ((this->*computeH)(i, j+1) - (this->*computeH)(i, j)) / m_cellWidth;
 }
 
 glm::vec2 Mesh::getGradient(int i, int j, bool withWater) const {
@@ -843,7 +911,7 @@ void Mesh::thermalErosionA(float thetaLimit, float erosionCoeff, float dt, bool 
 
     m_layersThickness = newLayersThickness;
 
-    mesh->init();
+    //mesh->init();
 
     
 }
@@ -926,7 +994,7 @@ void Mesh::thermalErosionB(float thetaLimit, float erosionCoeff, float dt, bool 
     }
 
     m_layersThickness = newLayersThickness;
-    mesh->init();
+    //mesh->init();
 }
 
 void Mesh::applyNThermalErosion(unsigned int N, float thetaLimit, float erosionCoeff, float dt, bool neighbourReceiver, bool descentDirection, bool typeErosion, bool connexity8, bool strategyB) {
@@ -992,30 +1060,57 @@ void Mesh::setLayersFlux(glm::vec4 values, unsigned int i, unsigned int j) {
     m_layersFlux[i * m_gridWidth + j] = values;
 }
 
-float Mesh::waterArriving(unsigned int i, unsigned int j) const
-{
-    if (i == (m_gridHeight + 1) / 2 && j == (m_gridWidth + 1) / 2) return 0.f;
+float Mesh::waterArriving(unsigned int i, unsigned int j) const {
+    if (i < 0 || i >= m_gridHeight || j < 0 || j >= m_gridWidth) return 0.f;
+
+    if (i == g_water_coords[0] && j == g_water_coords[1] && g_waterarriving) return g_water_flow;
 
     return 0.f;
 }
 
-void Mesh::hydraulicErosion(unsigned int N, float dt) {
+glm::vec2 Mesh::getLayersVelocity(int i, int j) {
+    if (i < 0 || i >= m_gridHeight || j < 0 || j >= m_gridWidth) return glm::vec2(0.f);
+
+    return m_layersVelocity[i * m_gridWidth + j];
+}
+
+void Mesh::setLayersVelocity(glm::vec2 values, unsigned int i, unsigned int j) {
+    m_layersVelocity[i * m_gridWidth + j] = values;
+}
+
+float Mesh::getLayersSediment(int i, int j) {
+    if (i < 0 || i >= m_gridHeight || j < 0 || j >= m_gridWidth) return 0.f;
+
+    return m_layersSediment[i * m_gridWidth + j];
+}
+
+void Mesh::setLayersSediment(float values, unsigned int i, unsigned int j) {
+    m_layersSediment[i * m_gridWidth + j] = values;
+}
+
+void Mesh::hydraulicErosion(unsigned int N, float dt, float k[3]) {
     //terrain height : b
     //water height : d
-    //suspended sediment amout : s
+    //suspended sediment amount : s
     //outflow flux f
     //velocity v
 
     float g = 9.81f;
     glm::vec4 flux;
-
-    float b, d, dh, K, dV;
+    glm::vec2 vel;
+    float b, d, dh, K, dV, dWx, dWy, u, v, d2, d_, C, st, sin_alpha, grad;
+    //float kc = 3.f; //Sediment capacity
+    //float ks = 0.3f; //Dissolving
+    //float kd = 0.3f; //Deposition
+    float kc = k[0]; //Sediment capacity
+    float ks = k[1]; //Dissolving
+    float kd = k[2]; //Deposition
     float A = m_cellWidth * m_cellHeight;
     float dtAg = dt * A * g;
 
 
     for (unsigned int k=0; k < N; k++) {
-        //Il faut faire des blouces sur i et j des int et pas unsigned int car i - 1 peut-être négatif quand i = 0 !!
+        //Il faut faire des boucles sur i et j des int et pas unsigned int car i - 1 peut-être négatif quand i = 0 !!
         for (int i = 0; i < m_gridHeight; i++) {
             for (int j = 0; j < m_gridWidth; j++) {
                 //Water increment
@@ -1041,16 +1136,72 @@ void Mesh::hydraulicErosion(unsigned int N, float dt) {
             }
         }
 
-        //Water Surface
+        //Erosion
         for (int i = 0; i < m_gridHeight; i++) {
             for (int j = 0; j < m_gridWidth; j++) {
                 flux = getLayersFlux(i, j);
                 dV = dt * (getLayersFlux(i - 1, j).x + getLayersFlux(i, j + 1).y + getLayersFlux(i + 1, j).w + getLayersFlux(i, j - 1).z - flux.x - flux.y - flux.z - flux.w);
-                setLayerThickness(getLayerThickness(m_nbOfLayers - 1, i, j) + dV / A, m_nbOfLayers - 1, i, j);
+                d2 = getLayerThickness(m_nbOfLayers - 1, i, j) + dV / A;
+                d_ = getLayerThickness(m_nbOfLayers - 1, i, j) + d2;
+                setLayerThickness(d2, m_nbOfLayers - 1, i, j);
+                //std::cout << d_ << std::endl;
+
+                dWx = getLayersFlux(i, j - 1).y - getLayersFlux(i, j).z + getLayersFlux(i, j).y - getLayersFlux(i, j + 1).z;
+                dWy = getLayersFlux(i + 1, j).x - getLayersFlux(i, j).w + getLayersFlux(i, j).x - getLayersFlux(i - 1, j).w;
+
+                //std::cout <<d_<< std::endl;
+                d_ = std::max(0.0001f, d_);
+
+                if (d_ <= 0) {
+                    u = 0.f;
+                    v = 0.f;
+                } else {
+                    u = dWx / (d_ * m_cellWidth);
+                    v = dWy / (d_ * m_cellHeight);
+                }
+
+
+
+                //std::cout << u << " " << dWx <<  " "<< d_ * m_cellHeight << std::endl;
+
+                //setLayersVelocity(glm::vec2(u, v), i, j);
+                //C = kc * glm::length(glm::vec2(u, v));
+                grad = glm::length(getGradient(i, j, false));
+                sin_alpha = grad / sqrt(grad * grad + 1);
+                C = kc * (sin_alpha + 2.f) * std::max(0.01f, glm::length(glm::vec2(u, v))) * getLayerThickness(m_nbOfLayers - 1, i, j) / (g_h_max - g_h_min);
+                //std::cout << getLayersVelocity(i, j).x << std::endl;
+                //std::cout << u << " " << v <<  " " << C << std::endl;
+
+                st = getLayersSediment(i, j);
+                //float hh = 1.f / getLayerThickness(m_nbOfLayers - 1, i, j);
+
+                if (C > st) {
+                    setLayerThickness(getLayerThickness(1, i, j) - ks * (C - st), 1, i, j);
+                    setLayersSediment(st + ks * (C - st), i, j);
+                    //std::cout << u << " " << v << " " << C << std::endl;
+                    //std::cout << st << " " << getLayersSediment(i, j) << std::endl;
+                    //std::cout << "true";
+                } else {
+                    setLayerThickness(getLayerThickness(1, i, j) + kd * (st - C), 1, i, j);
+                    setLayersSediment(st - kd * (st - C), i, j);
+                    //std::cout << C << " " <<st<< " "<<kd * (st - C) << std::endl;
+                    //std::cout << "false";
+                    //std::cout << st << " " << getLayersSediment(i, j) << " " << i << " " << j << std::endl;
+
+                }
+                //std::cout << C << " " << st << std::endl;
+            }
+        }
+
+        for (int i = 0; i < m_gridHeight; i++) {
+            for (int j = 0; j < m_gridWidth; j++) {
+                vel = getLayersVelocity(i, j);
+                setLayersSediment(getLayersSediment((int) (i + vel.x * dt), (int) (j - vel.y * dt)), i, j);
+                //std::cout << (int) (i + vel.x * dt) << " " << vel.x << " " << dt << std::endl;
             }
         }
     }
-    init();
+    //init();
 }
 
 void Mesh::applyFault(const int& mode, const int& n_iter, const float& _dy) {
@@ -1162,7 +1313,170 @@ void Mesh::applyFault(const int& mode, const int& n_iter, const float& _dy) {
             }
         }
     }
-    mesh->init();
+    //mesh->init();
+}
+
+void Mesh::createGridPerlinNoise() {
+
+    randomGradients.clear();
+
+    int newGridWidth = m_gridWidth + 1;
+    int newGridHeight = m_gridHeight + 1;
+
+    for (unsigned int i = 0; i < newGridHeight; i++)
+    {
+        for (unsigned int j = 0; j < newGridWidth; j++)
+        {
+            float thetaRandom = 2*3.1415*((float)rand() / RAND_MAX); //entre 0 et 2pi
+            glm::vec2 randomGradient(cos(thetaRandom), sin(thetaRandom));//norme 1
+            randomGradients.push_back(randomGradient);
+        }
+    }
+}
+
+float Mesh::perlinNoise(float x, float y, int resolutionX, int resolutionY) {
+
+    int newGridWidth = m_gridWidth + 1;
+
+    //le début de la grille de notre mesh commence en -5,-5 et non en 0,0
+    //donc on va décaler les indices pour que la grille des gradients 
+    //commence en même temps 
+    glm::vec2 topLeftGrid(-5, -5);
+    float deltaWidth = -topLeftGrid.x;
+    float deltaHeight = -topLeftGrid.y;
+
+    //pour se caler sur notre grille
+    x += deltaWidth;
+    y += deltaHeight;
+
+    //Pour avoir un bruit plus lisse, on rapproche les sommets lors du calculs
+    x /= resolutionX;
+    y /= resolutionY;
+
+    glm::vec2 vertex(x, y); //notre sommet du mesh
+
+    //on regarde les 4 coins de la grille autour du sommet
+    int leftJ = (int)vertex.x;
+    int rightJ = leftJ + 1;
+    int topI = (int)vertex.y;
+    int bottomI = topI + 1;
+
+    glm::vec2 topRight(rightJ, topI);
+    glm::vec2 bottomRight(rightJ, bottomI);
+    glm::vec2 topLeft(leftJ, topI);
+    glm::vec2 bottomLeft(leftJ, bottomI);
+
+    //Coefficients d'interpolation
+    float dx = x - leftJ;
+    float dy = y - topI;
+
+    //std::cout << "x = "<<x<< " ,leftJ = " << leftJ << " ,dx = " << dx << " ,y = "<<y<< " ,topI = " << topI << " ,dy = " << dy << std::endl;
+    
+    //calcul des produits scalaires
+    //d'abord on calcule l'offset avec chaque coin de la cellule
+    glm::vec2 offsetTopRight(topRight - vertex);
+    //ensuite on prend le gradient du sommet en haut à droite du sommet courant
+    glm::vec2 gradientTopRight(randomGradients.at(rightJ + topI * newGridWidth)); 
+    //puis on prend le produit scalaire
+    float dotTopRight = glm::dot(offsetTopRight, gradientTopRight);
+
+    glm::vec2 offsetBottomRight(bottomRight - vertex);
+    glm::vec2 gradientBottomRight(randomGradients.at(rightJ + bottomI * newGridWidth)); 
+    float dotBottomRight = glm::dot(offsetBottomRight, gradientBottomRight);
+
+    glm::vec2 offsetTopLeft(topLeft-vertex);
+    glm::vec2 gradientTopLeft(randomGradients.at(leftJ + topI * newGridWidth));
+    float dotTopLeft = glm::dot(offsetTopLeft, gradientTopLeft);
+    
+    glm::vec2 offsetBottomLeft(bottomLeft - vertex);
+    glm::vec2 gradientBottomLeft(randomGradients.at(leftJ + bottomI * newGridWidth));
+    float dotBottomLeft = glm::dot(offsetBottomLeft, gradientBottomLeft);
+
+    //interpolation bilinéaire sur la grille
+    float noise = dx * dy * dotBottomRight + dx * (1 - dy) * dotTopRight + dy * (1 - dx) * dotBottomLeft + (1 - dy) * (1 - dx) * dotTopLeft;
+
+    //std::cout << "noise = " << noise << std::endl;
+    return noise;
+}
+
+
+float Mesh::fractionalBrownianMotion(float x, float y, int numberOfOctaves) {
+    float lacunarity = 2;
+    float attenuation = 0.5;
+    float noise = 0;
+
+    float amplitude = 1;
+    float frequency = 1;
+
+    for (unsigned int k = 0; k < numberOfOctaves; k++)
+    {
+        noise += amplitude * perlinNoise(x,y,1,1); //on le fait sur le bruit de perlin
+        frequency *= lacunarity;
+        amplitude *= attenuation;
+    }
+
+    return noise;
+}
+
+void Mesh::applyNoise(const int& n_iter, int layerID, float maxNoise, int typeNoise, int numberOfOctaves, bool mapThickness) {
+
+    for (int n = 0; n < n_iter; n++)
+    {
+        //on créé la carte de bruit de perlin à chaque itération si le bruit est perlin ou fractional brownian motion 
+        if (typeNoise != 0) createGridPerlinNoise();
+
+        int indexVertex= 0;
+        std::vector<float> newThicknessTab;
+
+        for (int i = 0; i < m_gridHeight; i++)
+        {
+            for (int j = 0; j < m_gridWidth; j++)
+            {
+                float noise = 0;
+
+                if (typeNoise == 0) noise = 2 * ((float)rand() / RAND_MAX) - 1; //random : bruit entre -1 et 1;
+
+                float x = m_vertexPositions[indexVertex];
+                indexVertex += 2;
+                float y = m_vertexPositions[indexVertex]; //y correspond au z de m_vertexPositions
+                indexVertex += 1;
+
+                if (typeNoise == 1) noise = perlinNoise(x,y, g_resolutionX, g_resolutionY); //perlin : bruit entre -1 et 1;
+
+                if (typeNoise == 2) noise = fractionalBrownianMotion(x, y, numberOfOctaves); //fractional brownian motion 
+
+                //map noise
+                noise *= maxNoise; 
+                
+                float newThickness = mesh->getLayerThickness(layerID, i, j) + noise;
+
+                //on sauvegarde pour mapper entre l'épaisseur min et max après
+                if (mapThickness) newThicknessTab.push_back(newThickness);
+                else {
+                    if (newThickness< g_h_min) mesh->setLayerThickness(g_h_min, layerID, i, j);
+                    if (newThickness > g_h_max) mesh->setLayerThickness(g_h_max, layerID, i, j);
+                    mesh->setLayerThickness(newThickness, layerID, i, j);
+                }
+            }
+        }
+        if (mapThickness) {
+            //on map l'épaisseur entre le min et le max
+            float minThickness = *std::min_element(newThicknessTab.begin(), newThicknessTab.end());
+            float maxThickness = *std::max_element(newThicknessTab.begin(), newThicknessTab.end());
+
+            for (int i = 0; i < m_gridHeight; i++)
+            {
+                for (int j = 0; j < m_gridWidth; j++)
+                {
+                    float newThickness = (g_max_height_perlin - g_min_height_perlin) * (newThicknessTab.at(j + i * m_gridWidth) - minThickness) / (maxThickness - minThickness) + g_min_height_perlin;
+                    mesh->setLayerThickness(newThickness, layerID, i, j);
+                }
+            }
+        }
+        
+    }
+    //mesh->init();
+
 }
 
 
@@ -1336,6 +1650,8 @@ void initOpenGL() {
   
   //glCullFace(GL_BACK); // specifies the faces to cull (here the ones pointing away from the camera)
   //glEnable(GL_CULL_FACE); // enables face culling (based on the orientation defined by the cw/ccw enumeration).
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   glDepthFunc(GL_LESS);   // Specify the depth test for the z-buffer
   glEnable(GL_DEPTH_TEST);      // Enable the z-buffer test in the rasterization
   glClearColor(0.7f, 0.7f, 0.7f, 1.0f); // specify the background color, used any time the framebuffer is cleared
@@ -1499,10 +1815,18 @@ void renderImGui() {
 
     ImGui::ProgressBar(1.f - g_nbOfIterations_h / (float)g_nbOfIterations_h_max, ImVec2(0, 20));
 
+    if (ImGui::Button("Water")) {
+        if (g_waterarriving) g_waterarriving = false;
+        else g_waterarriving = true;
+    }
+
     if (ImGui::TreeNode("Parameters hydraulic")) {
 
         ImGui::SliderFloat("Dt hydraulic", &g_dt_h, 0.000001f, 0.1f, "%f", ImGuiSliderFlags_Logarithmic);
         ImGui::SliderInt("Number of iterations hydraulic", &g_iter_h, 1, 1000);
+        ImGui::SliderFloat3("kc, ks, kd", g_k_h, 0.0f, 10.f, "%f", ImGuiSliderFlags_Logarithmic);
+        ImGui::SliderInt2("Water coords", g_water_coords, 0, 100);
+        ImGui::SliderFloat("Water flow", &g_water_flow, -100.f, 100.f);
         ImGui::TreePop();
     } 
 
@@ -1569,6 +1893,83 @@ void renderImGui() {
         ImGui::TreePop();
     }
 
+    if (ImGui::Button("Noise Algorithm")) {
+
+        if (g_fault_mode == 10) {
+            g_perl_nbOfIterations = 1;
+            g_perl_nbOfIterations_max = 1;
+        }
+        else {
+            g_perl_nbOfIterations = g_perl_niter;
+            g_perl_nbOfIterations_max = g_perl_niter;
+        }
+    }
+
+    ImGui::ProgressBar(1.f - g_perl_nbOfIterations / (float) g_perl_nbOfIterations_max, ImVec2(0, 20));
+
+    if (ImGui::TreeNode("Parameters noise")) {
+
+        ImGui::Spacing();
+        ImGui::Text("Type of noise");
+        ImGui::Spacing();
+
+
+        if (ImGui::RadioButton("Random", &g_noise_type, 0)) {
+        }
+        ImGui::SameLine();
+
+        if (ImGui::RadioButton("Perlin", &g_noise_type, 1)) {
+        }
+        ImGui::SameLine();
+
+        if (ImGui::RadioButton("Fractional Brownian Motion", &g_noise_type, 2)) {
+        }
+
+        ImGui::Spacing();
+        ImGui::Text("Map thickness");
+        ImGui::Spacing();
+
+        if (ImGui::RadioButton("No", &g_map_thickness, 0)) {
+        }
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Yes", &g_map_thickness, 1)) {
+        }
+
+        ImGui::Spacing();
+        ImGui::Text("Layer to apply noise");
+        ImGui::Spacing();
+
+
+        if (ImGui::RadioButton("Layer 0", &g_perl_layer, 0)) {
+        }
+        ImGui::SameLine();
+
+        if (ImGui::RadioButton("Layer 1", &g_perl_layer, 1)) {
+        }
+        ImGui::SameLine();
+
+        if (ImGui::RadioButton("Layer 2", &g_perl_layer, 2)) {
+        }
+
+        ImGui::SliderInt("Number of iterations", &g_perl_niter, 1, 1000);
+        ImGui::SliderFloat("Max noise", &g_max_noise, 0, abs(g_h_max-g_h_min)*3); //abs(g_h_max-g_h_min)*3 altitude max des 3 layers
+        ImGui::SliderInt("Max height", &g_max_height_perlin, 1, 6);
+        ImGui::SliderInt("Min height", &g_min_height_perlin, 0, g_max_height_perlin);
+        ImGui::SliderInt("Resolution en X", &g_resolutionX, 1, 10);
+        ImGui::SliderInt("Resolution en Y", &g_resolutionY, 1, 10);
+        ImGui::SliderInt("Number of octaves (for FBM)", &g_number_octaves, 1, 100);
+        
+
+        ImGui::TreePop();
+    }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    if (ImGui::Button("Noise terrain generator")) {
+    }
+
     ImGui::Spacing();
     ImGui::Spacing();
     ImGui::Separator();
@@ -1580,18 +1981,19 @@ void renderImGui() {
         g_nbOfIterations_t = 0;
         g_nbOfIterations_h = 0;
         g_fault_nbOfIterations = 0;
+        g_perl_nbOfIterations = 0;
         //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(g_h_min, g_h_max)); //cpu
         //mesh->init();
         mesh = new Mesh(mesh->getLayersFileNames(), mesh->getLayersColors(), glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(g_h_min, g_h_max)); //cpu
-        mesh->init();
+        //mesh->init();
     }
 
     if (ImGui::TreeNode("Layers")) {
 
         static char heightMapName[255] = "../data/simpleB.png";
         ImGui::InputText("input text", heightMapName, IM_ARRAYSIZE(heightMapName));
-        static float colorAdd[] = { 255.f / 255.f, 255.f / 255.f, 255.f / 255.f };
-        ImGui::ColorEdit3("Color", colorAdd);
+        static float colorAdd[] = { 255.f / 255.f, 255.f / 255.f, 255.f / 255.f, 255.f / 255.f };
+        ImGui::ColorEdit4("Color", colorAdd);
 
         ImGui::TextDisabled("(?)");
 
@@ -1615,6 +2017,11 @@ void renderImGui() {
         if (ImGui::RadioButton("Layer 2", &g_layer, 2)) {
         }
 
+        if (ImGui::Button("Remove")) {
+            if (g_water_render) g_water_render = false;
+            else g_water_render = true;
+        }
+
         if (ImGui::Button("Add")) {
 
             int width, height, channels;
@@ -1631,10 +2038,10 @@ void renderImGui() {
             } else {
                 std::vector<std::string> fileNames = mesh->getLayersFileNames();
                 fileNames[g_layer] = heightMapName;
-                std::vector<glm::vec3> colors = mesh->getLayersColors();
-                colors[g_layer] = glm::vec3(colorAdd[0], colorAdd[1], colorAdd[2]);
+                std::vector<glm::vec4> colors = mesh->getLayersColors();
+                colors[g_layer] = glm::vec4(colorAdd[0], colorAdd[1], colorAdd[2], colorAdd[3]);
                 mesh = new Mesh(fileNames, colors, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(g_h_min, g_h_max));
-                mesh->init();
+               
             }
         }
 
@@ -1669,7 +2076,7 @@ void renderImGui() {
             glfwSetWindowTitle(g_window, "Un projet incroyable");
             mesh->setLayersColors(1, color1);
             mesh->setLayersColors(0, color0);
-            mesh->init();
+            //mesh->init(true);
         }
         ImGui::TreePop();
     }
@@ -1730,13 +2137,20 @@ void init() {
     initGLFW();
     initOpenGL();
     //mesh = new Mesh({ "../data/heightmap5.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f)}, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 1.f)); //cpu
+
     //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png", "../data/simpleB.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
     //mesh = new Mesh({ "../data/simpleB.png", "../data/sand-with-water.png","../data/water-around-sand.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(20.f / 255.f, 107.f / 255.f, 150.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
-    mesh = new Mesh({ "../data/simpleB.png", "../data/simpleStr2.png","../data/simpleB.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
+    //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleStr2.png","../data/simpleB.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
+    mesh = new Mesh({ "../data/simpleB.png", "../data/sand-with-water.png","../data/water-around-sand.png" }, { glm::vec4(120.f / 255.f, 135.f / 255.f, 124.f / 255.f, 1.f), glm::vec4(148.f / 255.f, 124.f / 255.f, 48.f / 255.f, 1.f), glm::vec4(39.f / 255.f, 112.f / 255.f, 125.f / 255.f, 100.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
+    //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleStr.png","../data/simpleB.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
     //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleW.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(20.f / 255.f, 107.f / 255.f, 150.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 1.f)); //cpu
+
+    //mesh = new Mesh({ "../data/simpleB.png", "../data/sand-with-water.png","../data/sand-with-water.png" }, { glm::vec4(120.f / 255.f, 135.f / 255.f, 124.f / 255.f, 1.f), glm::vec4(148.f / 255.f, 124.f / 255.f, 48.f / 255.f, 1.f), glm::vec4(39.f / 255.f, 112.f / 255.f, 125.f / 255.f, 100.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
+    //mesh = new Mesh({ "../data/simpleB.png","../data/heightmap3_100.jpg", "../data/water_source.jpg" }, { glm::vec4(120.f / 255.f, 135.f / 255.f, 124.f / 255.f, 1.f), glm::vec4(148.f / 255.f, 124.f / 255.f, 48.f / 255.f, 1.f), glm::vec4(39.f / 255.f, 112.f / 255.f, 125.f / 255.f, 100.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
+
     initGPUprogram();
     //g_sunID = loadTextureFromFileToGPU("../data/heightmap3.jpg");
-    mesh->init(); //gpu
+    //mesh->init(); //gpu
     initCamera();
     initImGui();
 }
@@ -1753,7 +2167,6 @@ void clear() {
 
 // The main rendering call
 void render() {
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Erase the color and z buffers.
 
     const glm::mat4 viewMatrix = g_camera.computeViewMatrix();
     const glm::mat4 projMatrix = g_camera.computeProjectionMatrix();
@@ -1768,6 +2181,9 @@ int main(int argc, char ** argv) {
     init(); // Your initialization code (user interface, OpenGL states, scene with geometry, material, lights, etc)
 
     while(!glfwWindowShouldClose(g_window)) {
+
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Erase the color and z buffers.
+
         if (g_nbOfIterations_t > 0) {
             mesh->applyNThermalErosion(1, g_thetaLimit_t, g_erosionCoeff_t, g_dt_t, g_neighbourReceiver_t, g_descentDirection_t, g_typeErosion_t, g_connexity_t, g_strategyErosion_t);
             g_nbOfIterations_t -= 1;
@@ -1779,11 +2195,23 @@ int main(int argc, char ** argv) {
         }
 
         if (g_nbOfIterations_h > 0) {
-            mesh->hydraulicErosion(1, g_dt_h); //J'ai mis à 1 pour avoir une iteration par frame c'est plus smooth
+            mesh->hydraulicErosion(1, g_dt_h, g_k_h); //J'ai mis à 1 pour avoir une iteration par frame c'est plus smooth
             g_nbOfIterations_h -= 1;
         }
+
+        if (g_perl_nbOfIterations > 0) {
+            mesh->applyNoise(1, g_perl_layer, g_max_noise, g_noise_type, g_number_octaves,g_map_thickness);
+            g_perl_nbOfIterations -= 1;
+        }
         
+        mesh->init(false);
         render();
+
+        if (g_water_render) {
+            mesh->init(true);
+            render();
+        } 
+
         renderImGui();
 
         glfwSwapBuffers(g_window);
