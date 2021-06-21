@@ -19,7 +19,7 @@ layout(std430, binding = 3) writeonly buffer FlowW {
 	float FlowOutW[][4]; //B (i - 1, j) , L (i, j - 1), R (i, j + 1), T (i + 1, j)
 };
 
-layout(std430, binding = 4) coherent buffer Vel {
+layout(std430, binding = 4) writeonly buffer Vel {
 	float Velocity[][2]; //Vitesse en i, vitesse en j
 };
 
@@ -39,9 +39,9 @@ const ivec2 neighborTranslations[4] = ivec2[4](
 	ivec2(0, 1),
 	ivec2(1, 0));
 const float g = 9.81;
-const float Kc = 0.5;
-const float Ks = 0.5;
-const float Kd = 0.5;
+const float Kc = 1;
+const float Ks[NB_OF_LAYERS - 1] = float[NB_OF_LAYERS - 1](0, 0.5); //0 pour la bedrock car non soluble
+const float Kd = 0.0001;
 
 shared float flowOut[PATCH_W_NEIGHBORHOOD_HEIGHT][PATCH_W_NEIGHBORHOOD_WIDTH][4]; //4 connexite
 
@@ -56,11 +56,15 @@ uint getIndex(int i, int j) {
 	return gridWidth * iC + jC;
 }
 
-float getHeight(int i, int j) {
-	//Hydraulic erosion dc hauteur du terrain avec eau d'ou NB_OF_LAYERS
+float getHeight(int i, int j, bool renderWater) {
+	uint kMax = NB_OF_LAYERS - 1;
+	if (renderWater) {
+		kMax = NB_OF_LAYERS;
+	}
+
 	float h = 0;
-	for (uint k = 0; k < NB_OF_LAYERS; k += 1) {
-		h += ThicknessR[getIndex(i , j)][k];
+	for (uint k = 0; k < kMax; k += 1) {
+		h += ThicknessR[getIndex(i, j)][k];
 	}
 	return h;
 }
@@ -71,14 +75,46 @@ float getFlow(int i, int j, unsigned int k) {
 	return FlowOutR[getIndex(i, j)][k];
 }
 
-uint getTopLayerId(int i, int j) {
-	//Thermal Erosion du hauteur du terrain sans eau d'ou NB_OF_LAYERS - 2
+uint getTopLayerId(int i, int j, bool renderWater) {
 	uint id = NB_OF_LAYERS - 2;
-	while (ThicknessR[getIndex(i, j)][id] == 0. && id > 0) {
+	if (renderWater) {
+		id = NB_OF_LAYERS - 1;
+	}
+
+	while (ThicknessR[getIndex(i, j)][id] < 0.0001 && id > 0) { //Si le layer pas assez epais on ne le concidere pas comme afleurant resout pb de clignotage
 		id = id - 1;
 	}
 
 	return id;
+}
+
+float getIDerivate(int i, int j, bool renderWater) {
+	//On fait attention au bord
+	if (i == 0) {
+		return (getHeight(i + 1, j, renderWater) - getHeight(i, j, renderWater)) / cellHeight;
+	}
+	if (i == gridHeight - 1) {
+		return (getHeight(i, j, renderWater) - getHeight(i - 1, j, renderWater)) / cellHeight;
+	}
+
+	return (getHeight(i + 1, j, renderWater) - getHeight(i - 1, j, renderWater)) / (2.f * cellHeight);
+}
+
+float getJDerivate(int i, int j, bool renderWater) {
+	//On fait attention au bord
+	if (j == 0) {
+		return (getHeight(i, j + 1, renderWater) - getHeight(i, j, renderWater)) / cellWidth;
+	}
+	if (j == gridWidth - 1) {
+		return (getHeight(i, j, renderWater) - getHeight(i, j - 1, renderWater)) / cellWidth;
+	}
+
+	//return (getTerrainH(i, j) - getTerrainH(i, j - 1)) / m_cellWidth;
+	return (getHeight(i, j + 1, renderWater) - getHeight(i, j - 1, renderWater)) / (2.f * cellWidth);
+}
+
+float getGradientNorm(int i, int j, bool renderWater) {
+	return sqrt(pow(getIDerivate(i, j, renderWater), 2) + pow(getJDerivate(i, j, renderWater), 2));
 }
 
 void main() {
@@ -108,13 +144,14 @@ void main() {
 				for (uint k = 0; k < 4; k += 1) {
 					neighborIJ = currentIJ + neighborTranslations[k];
 					distanceToNextCell = sqrt(pow(cellHeight * neighborTranslations[k].x, 2) + pow(cellWidth * neighborTranslations[k].y, 2));
-					deltaH = getHeight(currentIJ.x, currentIJ.y) - getHeight(neighborIJ.x, neighborIJ.y);
-					flowOut[currentXY.x][currentXY.y][k] = max(0, getFlow(currentIJ.x, currentIJ.y, k) + dt * A * g * deltaH / distanceToNextCell); //Atention au clampin dans flowOutR
+					deltaH = getHeight(currentIJ.x, currentIJ.y, true) - getHeight(neighborIJ.x, neighborIJ.y, true);
+					flowOut[currentXY.x][currentXY.y][k] = max(0, getFlow(currentIJ.x, currentIJ.y, k) + dt * A * g * deltaH / distanceToNextCell); //Attention au clampin dans flowOutR
 					flowOutTot += flowOut[currentXY.x][currentXY.y][k];
 				}
 
 				//Calcule du coeff de normalisation K, pour eviter de perdre plus de matiere que la colonne courante du layer
-				K = min(1, ThicknessR[getIndex(currentIJ.x, currentIJ.y)][indexOfWater] * A / (flowOutTot * dt));
+				 K = 0.; //Pour eviter des divisions qui explose, on met K à 0 si outFlowTot tres faible
+				 if (flowOutTot > 0.0001) K = min(1., ThicknessR[getIndex(currentIJ.x, currentIJ.y)][indexOfWater] * A / (flowOutTot * dt));
 
 				//Applique normalisation
 				for (uint k = 0; k < 4; k += 1) {
@@ -149,26 +186,51 @@ void main() {
 		float dMean = (d2 + ThicknessR[getIndex(pointIJ.x, pointIJ.y)][indexOfWater]) / 2.;
 		//Vitesse de l'eau dans la direction de i, X = u
 		float deltaWI = (flowOut[currentXY.x - 1][currentXY.y][3] - flowOut[currentXY.x][currentXY.y][0] + flowOut[currentXY.x][currentXY.y][3] - flowOut[currentXY.x + 1][currentXY.y][0]) / 2.;
-		float u = deltaWI / (cellWidth * dMean);
+		float u = 0.; //Par def à 0 car pas d'eau, et pour eviter explosion quand divise par 0
+		if (dMean > 0.0001) u = deltaWI / (cellWidth * dMean);
 		//Vitesse de l'eau dans la direction de j, Y = v
 		float deltaWJ = (flowOut[currentXY.x][currentXY.y - 1][2] - flowOut[currentXY.x][currentXY.y][1] + flowOut[currentXY.x][currentXY.y][2] - flowOut[currentXY.x][currentXY.y + 1][1]) / 2.;
-		float v = deltaWJ / (cellHeight * dMean);
+		float v = 0.;
+		if (dMean > 0.0001) v = deltaWJ / (cellHeight * dMean);
 
 
 		//Phase 4 erosion et deposition...
-		//To Do
-
+		float gradN = getGradientNorm(pointIJ.x, pointIJ.y, false);
+		float sinAlpha = gradN / sqrt(gradN * gradN + 1);
+		float C = Kc * sinAlpha * sqrt(u * u + v * v) * clamp(d2, 0, 1);
+		
+		uint topTerrainLayerId = getTopLayerId(pointIJ.x, pointIJ.y, false);
+		float topTerrainDHOut = 0.; //Pour ce qui se dissout eventuellement
+		float sandDHIn = 0.f; //Pour ce qui se dépose eventuellement, se dépose dans le sable
+		float s = Sediment[getIndex(pointIJ.x, pointIJ.y)];
+		float outputS = s;
+		if (C > s) { //Alors eau n'est pas sature peut accepter plus de sediment, le topLayerId est errode
+			topTerrainDHOut = min(Ks[topTerrainLayerId] * (C - s), ThicknessR[getIndex(pointIJ.x, pointIJ.y)][topTerrainLayerId]); //On n'enleve pas plus que la qqt disponible !!!
+			outputS = outputS + topTerrainDHOut;
+		}
+		else { //Eau sature depose des sediments, i.e. depose dans le sable
+			sandDHIn = Kd * (s - C);
+			outputS = max(0., outputS - sandDHIn);
+		}
 
 		//Phase 5, ecriture des outputs
 		for (uint k = 0; k < 4; k += 1) {
 			FlowOutW[getIndex(pointIJ.x, pointIJ.y)][k] = flowOut[currentXY.x][currentXY.y][k];
 		}
+		//car sinon PB car topTerrainLayerId = indexOfSand
+		float thicknessOutput[NB_OF_LAYERS];
 		for (uint k = 0; k < NB_OF_LAYERS; k += 1) {
-			ThicknessW[getIndex(pointIJ.x, pointIJ.y)][k] = ThicknessR[getIndex(pointIJ.x, pointIJ.y)][k];
-			//ThicknessW[getIndex(pointIJ.x, pointIJ.y)][k] = 0.5;
+			thicknessOutput[k] = ThicknessR[getIndex(pointIJ.x, pointIJ.y)][k];
 		}
-		ThicknessW[getIndex(pointIJ.x, pointIJ.y)][indexOfWater] = d2;
+		thicknessOutput[topTerrainLayerId] -= topTerrainDHOut;
+		thicknessOutput[indexOfSand] += sandDHIn;
+		thicknessOutput[indexOfWater] = d2;
+		//Ecriture
+		for (uint k = 0; k < NB_OF_LAYERS; k += 1) {
+			ThicknessW[getIndex(pointIJ.x, pointIJ.y)][k] = thicknessOutput[k];
+		}
 		Velocity[getIndex(pointIJ.x, pointIJ.y)][0] = u;
 		Velocity[getIndex(pointIJ.x, pointIJ.y)][1] = v;
+		Sediment[getIndex(pointIJ.x, pointIJ.y)] = outputS;
 	}
 }

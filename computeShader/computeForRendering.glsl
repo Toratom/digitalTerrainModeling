@@ -81,7 +81,7 @@ uint getTopLayerId(int i, int j, bool renderWater) {
 		id = NB_OF_LAYERS - 1;
 	}
 
-	while (ThicknessR[getIndex(i, j)][id] == 0. && id > 0) {
+	while (ThicknessR[getIndex(i, j)][id] < 0.0001 && id > 0) { //Si le layer pas assez epais on ne le concidere pas comme afleurant resout pb de clignotage
 		id = id - 1;
 	}
 

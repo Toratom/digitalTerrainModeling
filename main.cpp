@@ -63,7 +63,7 @@ int g_windowHeight = 768;
 GLFWwindow* g_window2 = nullptr;
 
 //Simulation parameters
-float g_dt = 0.0005;
+float g_dt = 0.005; //0.0005
 
 
 //GPU objects - Program
@@ -83,7 +83,8 @@ GLuint g_gridLayersHeightVboW = 0; //R aura le role de t et W de t + dt (puis sw
 GLuint g_waterFlowsVboR = 0; //B (i - 1, j) , L (i, j - 1), R (i, j + 1), T (i + 1, j)
 GLuint g_waterFlowsVboW = 0;
 GLuint g_waterVelocity = 0; //En R et W : v (vitesse direction i), u (vitesse direction j)
-GLuint g_waterSediment = 0; //En R et W
+GLuint g_waterSedimentR = 0;
+GLuint g_waterSedimentW = 0;
 //... Cf article pour autre buffer necessaire
 GLuint g_ibo = 0;
 
@@ -793,6 +794,26 @@ void initGPUprograms() {
     }
     CheckGlErrors("Hydraulic Erosion A 2");
 
+    g_computeProgramHydraulicB = glCreateProgram();
+    shaderSourceString = file2String("../computeShader/hydraulicErosionB.glsl");
+    //Ajout de l'entête
+    shaderSourceString = computeShaderHeader + shaderSourceString;
+    loadShader(g_computeProgramHydraulicB, GL_COMPUTE_SHADER, shaderSourceString, "Hydraulic Erosion B");
+    glLinkProgram(g_computeProgramHydraulicB);
+    CheckGlErrors("Hydraulic Erosion B 1");
+    glGetProgramiv(g_computeProgramHydraulicB, GL_LINK_STATUS, &status);
+    if (status == GL_FALSE)
+    {
+        std::cout << "Link failed Hydraulic Erosion B" << std::endl;
+        glGetProgramiv(g_computeProgramHydraulicB, GL_INFO_LOG_LENGTH, &logLength);
+        GLchar* log = new GLchar[logLength];
+        glGetProgramInfoLog(g_computeProgramHydraulicB, logLength, NULL, log);
+        std::cout << "Log (len) " << logLength << " : " << log << std::endl;
+        delete[] log;
+        exit(1);
+    }
+    CheckGlErrors("Hydraulic Erosion B 2");
+
     //Program for computing normals, height, color of each point of the grid
     g_computeForRendering = glCreateProgram();
     shaderSourceString = file2String("../computeShader/computeForRendering.glsl");
@@ -863,6 +884,19 @@ void initBuffersAndUniforms() {
     glUniform1f(loc, mesh->getCellWidth());
     loc = glGetUniformLocation(g_computeProgramHydraulicA, "dt");
     if (loc == -1) std::cout << "ERROR WITH UNIFORM dt CP HA" << std::endl;
+    glUniform1f(loc, g_dt);
+    glUseProgram(0);
+
+    
+    glUseProgram(g_computeProgramHydraulicB);
+    loc = glGetUniformLocation(g_computeProgramHydraulicB, "gridHeight");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM gridHeight CP HB" << std::endl;
+    glUniform1i(loc, mesh->getGridHeight());
+    loc = glGetUniformLocation(g_computeProgramHydraulicB, "gridWidth");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM gridWidth CP HB" << std::endl;
+    glUniform1i(loc, mesh->getGridWidth());
+    loc = glGetUniformLocation(g_computeProgramHydraulicB, "dt");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM dt CP HB" << std::endl;
     glUniform1f(loc, g_dt);
     glUseProgram(0);
 
@@ -937,8 +971,12 @@ void initBuffersAndUniforms() {
     glBufferStorage(GL_ARRAY_BUFFER, vertexBufferSize, NULL, 0);
 
     vertexBufferSize = sizeof(float) * mesh->getGridHeight() * mesh->getGridWidth();
-    glCreateBuffers(1, &g_waterSediment);
-    glBindBuffer(GL_ARRAY_BUFFER, g_waterSediment);
+    glCreateBuffers(1, &g_waterSedimentR);
+    glBindBuffer(GL_ARRAY_BUFFER, g_waterSedimentR);
+    glBufferStorage(GL_ARRAY_BUFFER, vertexBufferSize, NULL, 0);
+
+    glCreateBuffers(1, &g_waterSedimentW);
+    glBindBuffer(GL_ARRAY_BUFFER, g_waterSedimentW);
     glBufferStorage(GL_ARRAY_BUFFER, vertexBufferSize, NULL, 0);
 
     vertexBufferSize = 4 * sizeof(float) * mesh->getGridHeight() * mesh->getGridWidth();
@@ -1077,7 +1115,7 @@ void init() {
     //    { 0.f, 0.3f, 0.f},
     //    glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
     mesh = new Mesh({ "../data/simpleB.png", "../data/sand-with-water.png", "../data/water-around-sand.png" },
-        { glm::vec4(120.f / 255.f, 135.f / 255.f, 124.f / 255.f, 1.f), glm::vec4(148.f / 255.f, 124.f / 255.f, 48.f / 255.f, 1.f), glm::vec4(20.f / 255.f, 107.f / 255.f, 150.f / 255.f, 0.5f) },
+        { glm::vec4(120.f / 255.f, 135.f / 255.f, 124.f / 255.f, 1.f), glm::vec4(148.f / 255.f, 124.f / 255.f, 48.f / 255.f, 1.f), glm::vec4(39.f / 255.f, 112.f / 255.f, 125.f / 255.f, 0.2) },
         { 0.f , 0.3f, 0.f },
         { 0.f, 0.3f, 0.f },
         glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
@@ -1119,7 +1157,8 @@ int main(int argc, char ** argv) {
     GLint loc = 0;
     GLuint swapBuffT = 0;
     GLuint swapBuffF = 0;
-    unsigned int nbOfItT = 0;
+    GLuint swapBuffS = 0;
+    unsigned int nbOfItT = 500;
     unsigned int nbOfItH = 1000000;
     while(!glfwWindowShouldClose(g_window)) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Erase the color and z buffers.
@@ -1143,6 +1182,7 @@ int main(int argc, char ** argv) {
         }
 
         if (nbOfItH > 0) {
+            //Etape A
             //Phase de calculs :
             glUseProgram(g_computeProgramHydraulicA);
             //Bind les buffer du compute shader :
@@ -1151,7 +1191,7 @@ int main(int argc, char ** argv) {
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, g_waterFlowsVboR);
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, g_waterFlowsVboW);
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, g_waterVelocity);
-            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, g_waterSediment);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, g_waterSedimentR);
             //Appelle au compute shader
             glDispatchCompute(g_nbGroupsX, g_nbGroupsY, 1); //Dimension 2D de l'espace d'invocation x correspond à i et y à j
             glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
@@ -1164,6 +1204,22 @@ int main(int argc, char ** argv) {
             swapBuffF = g_waterFlowsVboR;
             g_waterFlowsVboR = g_waterFlowsVboW;
             g_waterFlowsVboW = swapBuffF;
+
+            //Etape B:
+            glUseProgram(g_computeProgramHydraulicB);
+            //Bind les buffer du compute shader :
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, g_waterSedimentR);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, g_waterSedimentW);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, g_waterVelocity);
+            
+            //Appelle au compute shader
+            glDispatchCompute(g_nbGroupsX, g_nbGroupsY, 1); //Dimension 2D de l'espace d'invocation x correspond à i et y à j
+            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+            //Swap les buffer R et W
+            swapBuffS = g_waterSedimentR;
+            g_waterSedimentR = g_waterSedimentW;
+            g_waterSedimentW = swapBuffS;
 
             nbOfItH -= 1;
         }
@@ -1209,6 +1265,8 @@ int main(int argc, char ** argv) {
 
         glfwSwapBuffers(g_window);
         glfwPollEvents();
+
+        //Sleep(500);
     }
 
     // Cleanup
