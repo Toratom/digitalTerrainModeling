@@ -83,6 +83,7 @@ void main() {
 				currentIJ = pointIJ + ivec2(dI, dJ) - offset;
 				currentXY = pointXY + ivec2(dI, dJ);
 				currentTopLayerId = getTopLayerId(currentIJ.x, currentIJ.y);
+				dHOutTot = 0.;
 
 				//Cas bedrock gere par erosionCoeff = 0 grace à la liste erosionCoeffs
 				for (uint k = 0; k < 8; k += 1) {

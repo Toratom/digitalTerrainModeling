@@ -63,12 +63,14 @@ int g_windowHeight = 768;
 GLFWwindow* g_window2 = nullptr;
 
 //Simulation parameters
-float g_dt_t = 0.00500;
+float g_dt = 0.0005;
 
 
 //GPU objects - Program
 GLuint g_program = 0; // A GPU program contains at least a vertex shader and a fragment shader
 GLuint g_computeProgram = 0; //GPU program for compute shader
+GLuint g_computeProgramHydraulicA = 0;
+GLuint g_computeProgramHydraulicB = 0;
 GLuint g_computeForRendering = 0;
 //GPU objects - Buffers
 //GLuint g_colVbo = 0;
@@ -78,7 +80,10 @@ GLuint g_gridHeightsVbo = 0; //Un vbo qui donne la hauteur du terrain en (i,j), 
 GLuint g_gridColorsVbo = 0;
 GLuint g_gridLayersHeightVboR = 0; //b0(i,j), b1(i,j), ..., bNbOfLayers(i,j) ... Donne l'epaisseur des différents layers AU MAX 4 LAYERS (sans compter l'eau)
 GLuint g_gridLayersHeightVboW = 0; //R aura le role de t et W de t + dt (puis swap) : en pratique on lit dans celui pointé par R et on écrit dans celui pointé par W
-GLuint g_waterPropsVbo = 0; //d, s, fL, fR, fT, fB, u, v
+GLuint g_waterFlowsVboR = 0; //B (i - 1, j) , L (i, j - 1), R (i, j + 1), T (i + 1, j)
+GLuint g_waterFlowsVboW = 0;
+GLuint g_waterVelocity = 0; //En R et W : v (vitesse direction i), u (vitesse direction j)
+GLuint g_waterSediment = 0; //En R et W
 //... Cf article pour autre buffer necessaire
 GLuint g_ibo = 0;
 
@@ -768,6 +773,26 @@ void initGPUprograms() {
     }
     CheckGlErrors("Thermal Erosion 2");
 
+    g_computeProgramHydraulicA = glCreateProgram();
+    shaderSourceString = file2String("../computeShader/hydraulicErosionA.glsl");
+    //Ajout de l'entête
+    shaderSourceString = computeShaderHeader + shaderSourceString;
+    loadShader(g_computeProgramHydraulicA, GL_COMPUTE_SHADER, shaderSourceString, "Hydraulic Erosion A");
+    glLinkProgram(g_computeProgramHydraulicA);
+    CheckGlErrors("Hydraulic Erosion A 1");
+    glGetProgramiv(g_computeProgramHydraulicA, GL_LINK_STATUS, &status);
+    if (status == GL_FALSE)
+    {
+        std::cout << "Link failed Hydraulic Erosion A" << std::endl;
+        glGetProgramiv(g_computeProgramHydraulicA, GL_INFO_LOG_LENGTH, &logLength);
+        GLchar* log = new GLchar[logLength];
+        glGetProgramInfoLog(g_computeProgramHydraulicA, logLength, NULL, log);
+        std::cout << "Log (len) " << logLength << " : " << log << std::endl;
+        delete[] log;
+        exit(1);
+    }
+    CheckGlErrors("Hydraulic Erosion A 2");
+
     //Program for computing normals, height, color of each point of the grid
     g_computeForRendering = glCreateProgram();
     shaderSourceString = file2String("../computeShader/computeForRendering.glsl");
@@ -820,7 +845,25 @@ void initBuffersAndUniforms() {
     glUniform1fv(loc, NB_OF_LAYERS, mesh->getLayersThetaLimit().data());
     loc = glGetUniformLocation(g_computeProgram, "dt");
     if (loc == -1) std::cout << "ERROR WITH UNIFORM dt CP" << std::endl;
-    glUniform1f(loc, g_dt_t);
+    glUniform1f(loc, g_dt);
+    glUseProgram(0);
+
+    glUseProgram(g_computeProgramHydraulicA);
+    loc = glGetUniformLocation(g_computeProgramHydraulicA, "gridHeight");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM gridHeight CP HA" << std::endl;
+    glUniform1i(loc, mesh->getGridHeight());
+    loc = glGetUniformLocation(g_computeProgramHydraulicA, "gridWidth");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM gridWidth CP HA" << std::endl;
+    glUniform1i(loc, mesh->getGridWidth());
+    loc = glGetUniformLocation(g_computeProgramHydraulicA, "cellHeight");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM cellHeight CP HA" << std::endl;
+    glUniform1f(loc, mesh->getCellHeight());
+    loc = glGetUniformLocation(g_computeProgramHydraulicA, "cellWidth");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM cellWidth CP HA" << std::endl;
+    glUniform1f(loc, mesh->getCellWidth());
+    loc = glGetUniformLocation(g_computeProgramHydraulicA, "dt");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM dt CP HA" << std::endl;
+    glUniform1f(loc, g_dt);
     glUseProgram(0);
 
     glUseProgram(g_computeForRendering); //Il faut "bind" le program afin de pouvoir set des variables uniforme avec glUniform...
@@ -878,6 +921,26 @@ void initBuffersAndUniforms() {
     glBindBuffer(GL_ARRAY_BUFFER, g_gridLayersHeightVboW);
     glBufferStorage(GL_ARRAY_BUFFER, vertexBufferSize, terrainPropsTmp.data(), 0);
 
+    std::vector<float> flowTmp(4 * mesh->getGridHeight() * mesh->getGridWidth(), 0);
+    vertexBufferSize = sizeof(float) * flowTmp.size();
+    glCreateBuffers(1, &g_waterFlowsVboR);
+    glBindBuffer(GL_ARRAY_BUFFER, g_waterFlowsVboR);
+    glBufferStorage(GL_ARRAY_BUFFER, vertexBufferSize, flowTmp.data(), 0);
+
+    glCreateBuffers(1, &g_waterFlowsVboW);
+    glBindBuffer(GL_ARRAY_BUFFER, g_waterFlowsVboW);
+    glBufferStorage(GL_ARRAY_BUFFER, vertexBufferSize, flowTmp.data(), 0);
+
+    vertexBufferSize = 2 * sizeof(float) * mesh->getGridHeight() * mesh->getGridWidth();
+    glCreateBuffers(1, &g_waterVelocity);
+    glBindBuffer(GL_ARRAY_BUFFER, g_waterVelocity);
+    glBufferStorage(GL_ARRAY_BUFFER, vertexBufferSize, NULL, 0);
+
+    vertexBufferSize = sizeof(float) * mesh->getGridHeight() * mesh->getGridWidth();
+    glCreateBuffers(1, &g_waterSediment);
+    glBindBuffer(GL_ARRAY_BUFFER, g_waterSediment);
+    glBufferStorage(GL_ARRAY_BUFFER, vertexBufferSize, NULL, 0);
+
     vertexBufferSize = 4 * sizeof(float) * mesh->getGridHeight() * mesh->getGridWidth();
     glCreateBuffers(1, &g_gridNormalsVbo);
     glBindBuffer(GL_ARRAY_BUFFER, g_gridNormalsVbo);
@@ -893,13 +956,10 @@ void initBuffersAndUniforms() {
     glBindBuffer(GL_ARRAY_BUFFER, g_gridColorsVbo);
     glBufferStorage(GL_ARRAY_BUFFER, vertexBufferSize, NULL, 0);
 
-    //g_waterPropsVbo = 0; //d, s, fL, fR, fT, fB, u, v
-
     vertexBufferSize = sizeof(unsigned int) * mesh->getTriangleIndices().size();
     glCreateBuffers(1, &g_ibo);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_ibo);
     glBufferStorage(GL_ELEMENT_ARRAY_BUFFER, vertexBufferSize, mesh->getTriangleIndices().data(), 0);
-
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -1057,12 +1117,14 @@ int main(int argc, char ** argv) {
     init(); // Your initialization code (user interface, OpenGL states, scene with geometry, material, lights, etc)
     
     GLint loc = 0;
-    GLuint swapBuff = 0;
-    unsigned int nbOfIt = 1000000;
+    GLuint swapBuffT = 0;
+    GLuint swapBuffF = 0;
+    unsigned int nbOfItT = 0;
+    unsigned int nbOfItH = 1000000;
     while(!glfwWindowShouldClose(g_window)) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Erase the color and z buffers.
 
-        if (nbOfIt > 0) {
+        if (nbOfItT > 0) {
             //Phase de calculs :
             glUseProgram(g_computeProgram);
             //Bind les buffer du compute shader :
@@ -1073,11 +1135,37 @@ int main(int argc, char ** argv) {
             glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
             //Swap les buffer R et W
-            swapBuff = g_gridLayersHeightVboR;
+            swapBuffT = g_gridLayersHeightVboR;
             g_gridLayersHeightVboR = g_gridLayersHeightVboW;
-            g_gridLayersHeightVboW = swapBuff;
+            g_gridLayersHeightVboW = swapBuffT;
 
-            nbOfIt -= 1;
+            nbOfItT -= 1;
+        }
+
+        if (nbOfItH > 0) {
+            //Phase de calculs :
+            glUseProgram(g_computeProgramHydraulicA);
+            //Bind les buffer du compute shader :
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, g_gridLayersHeightVboR);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, g_gridLayersHeightVboW);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, g_waterFlowsVboR);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, g_waterFlowsVboW);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, g_waterVelocity);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, g_waterSediment);
+            //Appelle au compute shader
+            glDispatchCompute(g_nbGroupsX, g_nbGroupsY, 1); //Dimension 2D de l'espace d'invocation x correspond à i et y à j
+            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+            //Swap les buffer R et W
+            swapBuffT = g_gridLayersHeightVboR;
+            g_gridLayersHeightVboR = g_gridLayersHeightVboW;
+            g_gridLayersHeightVboW = swapBuffT;
+
+            swapBuffF = g_waterFlowsVboR;
+            g_waterFlowsVboR = g_waterFlowsVboW;
+            g_waterFlowsVboW = swapBuffF;
+
+            nbOfItH -= 1;
         }
 
 
@@ -1115,8 +1203,9 @@ int main(int argc, char ** argv) {
         glUseProgram(g_program);
         render();
 
-
+        //Render Imgui
         renderImGui();
+
 
         glfwSwapBuffers(g_window);
         glfwPollEvents();
