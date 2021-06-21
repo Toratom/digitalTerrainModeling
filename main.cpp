@@ -42,6 +42,12 @@
 
 #define PI 3.141592
 
+
+int g_layer = 1;
+float g_h_min = 0.f;
+float g_h_max = 2.f;
+float g_dy = 0.5f;
+
 // Window parameters
 GLFWwindow *g_window = nullptr;
 int g_windowWidth = 1024;
@@ -88,15 +94,14 @@ unsigned int g_perl_nbOfIterations_max = 1;
 int g_perl_niter = 1;
 int g_noise_type = 0; //0 : random, 1 : perlin
 int g_perl_layer = 1;
-float g_max_noise = 0.05;
+int g_max_height_perlin = 2;
+int g_min_height_perlin = 0;
+float g_max_noise = g_h_max*3/2;
+int g_resolutionX = 1;
+int g_resolutionY = 1;
 std::vector<float> noiseVector;
 std::vector<glm::vec2> randomGradients; //liste de gradients random de norme 1
-
-
-int g_layer = 1;
-float g_h_min = 0.f;
-float g_h_max = 2.f;
-float g_dy = 0.5f;
+int g_number_octaves = 10;
 
 GLFWwindow* g_window2 = nullptr;
 
@@ -190,9 +195,9 @@ public:
     void applyNThermalErosion(unsigned int N, float thetaLimit, float erosionCoeff, float dt, bool neighbourReceiver, bool descentDirection, bool typeErosion, bool connexity8, bool strategyB);
     void applyFault(const int& mode, const int& n_iter, const float& _dy );
     std::vector<std::string> getLayersFileNames();
-    void applyNoise(const int& n_iter, int layerID, float maxNoise, int typeNoise);
+    void applyNoise(const int& n_iter, int layerID, float maxNoise, int typeNoise, int numberOfOctaves);
     void createGridPerlinNoise();
-    float perlinNoise(float x, float y);
+    float perlinNoise(float x, float y,int resolutionX, int resolutionY);
     float fractionalBrownianMotion(float x, float y, int numberOfOctaves);
 
 
@@ -1319,31 +1324,41 @@ void Mesh::createGridPerlinNoise() {
 
     for (unsigned int i = 0; i < newGridHeight; i++)
     {
-        for (unsigned int j = 0; j < newGridHeight; j++)
+        for (unsigned int j = 0; j < newGridWidth; j++)
         {
-            float thetaRandom = rand();
+            float thetaRandom = 2*3.1415*((float)rand() / RAND_MAX); //entre 0 et 2pi
             glm::vec2 randomGradient(cos(thetaRandom), sin(thetaRandom));//norme 1
             randomGradients.push_back(randomGradient);
         }
     }
 }
 
-float Mesh::perlinNoise(float x, float y) {
-
-    glm::vec2 vertex(x,y); //notre sommet du mesh
+float Mesh::perlinNoise(float x, float y, int resolutionX, int resolutionY) {
 
     int newGridWidth = m_gridWidth + 1;
 
-    //le début de la grille de notre mesh (de la forme i,j) pour que la grille des gradients commencent en même temps on va décaler les indices
+    //le début de la grille de notre mesh commence en -5,-5 et non en 0,0
+    //donc on va décaler les indices pour que la grille des gradients 
+    //commence en même temps 
     glm::vec2 topLeftGrid(-5, -5);
     float deltaWidth = -topLeftGrid.x;
     float deltaHeight = -topLeftGrid.y;
 
+    //pour se caler sur notre grille
+    x += deltaWidth;
+    y += deltaHeight;
+
+    //Pour avoir un bruit plus lisse, on rapproche les sommets lors du calculs
+    x /= resolutionX;
+    y /= resolutionY;
+
+    glm::vec2 vertex(x, y); //notre sommet du mesh
+
     //on regarde les 4 coins de la grille autour du sommet
-    int leftJ = (int)vertex.x + deltaWidth;
-    int rightJ = leftJ + 1 + deltaWidth;
-    int topI = (int)vertex.y + deltaHeight;
-    int bottomI = topI + 1 + deltaHeight;
+    int leftJ = (int)vertex.x;
+    int rightJ = leftJ + 1;
+    int topI = (int)vertex.y;
+    int bottomI = topI + 1;
 
     glm::vec2 topRight(rightJ, topI);
     glm::vec2 bottomRight(rightJ, bottomI);
@@ -1354,13 +1369,18 @@ float Mesh::perlinNoise(float x, float y) {
     float dx = x - leftJ;
     float dy = y - topI;
 
+    //std::cout << "x = "<<x<< " ,leftJ = " << leftJ << " ,dx = " << dx << " ,y = "<<y<< " ,topI = " << topI << " ,dy = " << dy << std::endl;
+    
     //calcul des produits scalaires
+    //d'abord on calcule l'offset avec chaque coin de la cellule
     glm::vec2 offsetTopRight(topRight - vertex);
-    glm::vec2 gradientTopRight(randomGradients.at(rightJ + topI * newGridWidth));
+    //ensuite on prend le gradient du sommet en haut à droite du sommet courant
+    glm::vec2 gradientTopRight(randomGradients.at(rightJ + topI * newGridWidth)); 
+    //puis on prend le produit scalaire
     float dotTopRight = glm::dot(offsetTopRight, gradientTopRight);
 
     glm::vec2 offsetBottomRight(bottomRight - vertex);
-    glm::vec2 gradientBottomRight(randomGradients.at(rightJ + bottomI * newGridWidth)); //gradient du sommet en bas à droite
+    glm::vec2 gradientBottomRight(randomGradients.at(rightJ + bottomI * newGridWidth)); 
     float dotBottomRight = glm::dot(offsetBottomRight, gradientBottomRight);
 
     glm::vec2 offsetTopLeft(topLeft-vertex);
@@ -1374,6 +1394,7 @@ float Mesh::perlinNoise(float x, float y) {
     //interpolation bilinéaire sur la grille
     float noise = dx * dy * dotBottomRight + dx * (1 - dy) * dotTopRight + dy * (1 - dx) * dotBottomLeft + (1 - dy) * (1 - dx) * dotTopLeft;
 
+    //std::cout << "noise = " << noise << std::endl;
     return noise;
 }
 
@@ -1388,7 +1409,7 @@ float Mesh::fractionalBrownianMotion(float x, float y, int numberOfOctaves) {
 
     for (unsigned int k = 0; k < numberOfOctaves; k++)
     {
-        noise += amplitude * perlinNoise(x,y); //on le fait sur le bruit de perlin
+        noise += amplitude * perlinNoise(x,y,1,1); //on le fait sur le bruit de perlin
         frequency *= lacunarity;
         amplitude *= attenuation;
     }
@@ -1396,7 +1417,7 @@ float Mesh::fractionalBrownianMotion(float x, float y, int numberOfOctaves) {
     return noise;
 }
 
-void Mesh::applyNoise(const int& n_iter, int layerID, float maxNoise, int typeNoise) {
+void Mesh::applyNoise(const int& n_iter, int layerID, float maxNoise, int typeNoise, int numberOfOctaves) {
 
     for (int n = 0; n < n_iter; n++)
     {
@@ -1404,6 +1425,7 @@ void Mesh::applyNoise(const int& n_iter, int layerID, float maxNoise, int typeNo
         if (typeNoise != 0) createGridPerlinNoise();
 
         int indexVertex= 0;
+        std::vector<float> newThicknessTab;
 
         for (int i = 0; i < m_gridHeight; i++)
         {
@@ -1416,19 +1438,32 @@ void Mesh::applyNoise(const int& n_iter, int layerID, float maxNoise, int typeNo
                 float x = m_vertexPositions[indexVertex];
                 indexVertex += 2;
                 float y = m_vertexPositions[indexVertex]; //y correspond au z de m_vertexPositions
+                indexVertex += 1;
 
+                if (typeNoise == 1) noise = perlinNoise(x,y, g_resolutionX, g_resolutionY); //perlin : bruit entre -1 et 1;
 
-                if (typeNoise == 1) noise = perlinNoise(x,y); //perlin : bruit entre -1 et 1;
+                if (typeNoise == 2) noise = fractionalBrownianMotion(x, y, numberOfOctaves); //fractional brownian motion 
 
-                if (typeNoise == 2) noise = fractionalBrownianMotion(x, y, 10); //fractional brownian motion 
-
-                //map noise :
-                noise *= maxNoise;
-
+                //map noise
+                noise *= maxNoise; 
+                
                 float newThickness = mesh->getLayerThickness(layerID, i, j) + noise;
-                if (newThickness > 1) mesh->setLayerThickness(1, layerID, i, j);
-                if (newThickness < 0) mesh->setLayerThickness(0, layerID, i, j);
-                else mesh->setLayerThickness(newThickness, layerID, i, j);
+
+                //on sauvegarde pour mapper entre l'épaisseur min et max après
+                newThicknessTab.push_back(newThickness);
+            }
+        }
+
+        //on map l'épaisseur entre le min et le max
+        float minThickness = *std::min_element(newThicknessTab.begin(), newThicknessTab.end());
+        float maxThickness = *std::max_element(newThicknessTab.begin(), newThicknessTab.end());
+
+        for (int i = 0; i < m_gridHeight; i++)
+        {
+            for (int j = 0; j < m_gridWidth; j++)
+            {
+                float newThickness = (g_max_height_perlin - g_min_height_perlin)*(newThicknessTab.at(j + i * m_gridWidth)-minThickness)/(maxThickness-minThickness)+ g_min_height_perlin;
+                mesh->setLayerThickness(newThickness, layerID, i, j);
             }
         }
     }
@@ -1882,7 +1917,7 @@ void renderImGui() {
         if (ImGui::RadioButton("Fractional Brownian Motion", &g_noise_type, 2)) {
         }
         ImGui::Spacing();
-        ImGui::Text("First layer to apply noise");
+        ImGui::Text("Layer to apply noise");
         ImGui::Spacing();
 
 
@@ -1898,8 +1933,12 @@ void renderImGui() {
         }
 
         ImGui::SliderInt("Number of iterations", &g_perl_niter, 1, 1000);
-        ImGui::SliderFloat("Max noise", &g_max_noise, 0, 1.f);
-
+        ImGui::SliderFloat("Max noise", &g_max_noise, 0, abs(g_h_max-g_h_min)*3); //abs(g_h_max-g_h_min)*3 altitude max des 3 layers
+        ImGui::SliderInt("Max height", &g_max_height_perlin, 1, 6);
+        ImGui::SliderInt("Min height", &g_min_height_perlin, 0, g_max_height_perlin);
+        ImGui::SliderInt("Resolution en X", &g_resolutionX, 1, 10);
+        ImGui::SliderInt("Resolution en Y", &g_resolutionY, 1, 10);
+        ImGui::SliderInt("Number of octaves (for FBM)", &g_number_octaves, 1, 100);
         
 
         ImGui::TreePop();
@@ -2135,7 +2174,7 @@ int main(int argc, char ** argv) {
         }
 
         if (g_perl_nbOfIterations > 0) {
-            mesh->applyNoise(1, g_perl_layer, g_max_noise, g_noise_type);
+            mesh->applyNoise(1, g_perl_layer, g_max_noise, g_noise_type, g_number_octaves);
             g_perl_nbOfIterations -= 1;
         }
         
