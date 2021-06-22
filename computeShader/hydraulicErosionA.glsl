@@ -40,8 +40,8 @@ const ivec2 neighborTranslations[4] = ivec2[4](
 	ivec2(1, 0));
 const float g = 9.81;
 const float Kc = 1;
-const float Ks[NB_OF_LAYERS - 1] = float[NB_OF_LAYERS - 1](0, 0.5); //0 pour la bedrock car non soluble
-const float Kd = 0.0001;
+const float Ks[NB_OF_LAYERS - 1] = float[NB_OF_LAYERS - 1](0, 0.05); //0 pour la bedrock car non soluble
+const float Kd = 0.001;
 
 shared float flowOut[PATCH_W_NEIGHBORHOOD_HEIGHT][PATCH_W_NEIGHBORHOOD_WIDTH][4]; //4 connexite
 
@@ -69,7 +69,7 @@ float getHeight(int i, int j, bool renderWater) {
 	return h;
 }
 
-float getFlow(int i, int j, unsigned int k) {
+float getFlow(int i, int j, uint k) {
 	if (i < 0 || j < 0) return 0.;
 	if (i > gridHeight - 1 || j > gridWidth - 1) return 0.;
 	return FlowOutR[getIndex(i, j)][k];
@@ -182,22 +182,24 @@ void main() {
 
 		//Phase 3 : ecriture avec convention que l'érodé devient sable, besoin de separer en R et W a cause des frontieres/bords des patchs qui se trouve dans plusieurs working group
 		//La hauteur de l'eau update
-		float d2 = ThicknessR[getIndex(pointIJ.x, pointIJ.y)][indexOfWater] + (volumeInTot - volumeOutTot) / A;
-		float dMean = (d2 + ThicknessR[getIndex(pointIJ.x, pointIJ.y)][indexOfWater]) / 2.;
+		float d1 = ThicknessR[getIndex(pointIJ.x, pointIJ.y)][indexOfWater];
+		float d2 = d1 + (volumeInTot - volumeOutTot) / A;
+		if (d2 < 0.000001) d2 = 0.; //Bonne idee ?
+		float dMean = (d2 + d1) / 2.;
 		//Vitesse de l'eau dans la direction de i, X = u
 		float deltaWI = (flowOut[currentXY.x - 1][currentXY.y][3] - flowOut[currentXY.x][currentXY.y][0] + flowOut[currentXY.x][currentXY.y][3] - flowOut[currentXY.x + 1][currentXY.y][0]) / 2.;
 		float u = 0.; //Par def à 0 car pas d'eau, et pour eviter explosion quand divise par 0
-		if (dMean > 0.0001) u = deltaWI / (cellWidth * dMean);
+		if (dMean > 0.0001) u = min(deltaWI / (cellWidth * dMean), cellHeight / dt); //On doit avoir u tq u*dt < cellHeight cf article dans l'ideal si trop grand faudrait lever exception et tout refaire avec dt plus petit
 		//Vitesse de l'eau dans la direction de j, Y = v
 		float deltaWJ = (flowOut[currentXY.x][currentXY.y - 1][2] - flowOut[currentXY.x][currentXY.y][1] + flowOut[currentXY.x][currentXY.y][2] - flowOut[currentXY.x][currentXY.y + 1][1]) / 2.;
 		float v = 0.;
-		if (dMean > 0.0001) v = deltaWJ / (cellHeight * dMean);
+		if (dMean > 0.0001) v = min(deltaWJ / (cellHeight * dMean), cellWidth / dt); //Cf rq sur u
 
 
 		//Phase 4 erosion et deposition...
 		float gradN = getGradientNorm(pointIJ.x, pointIJ.y, false);
 		float sinAlpha = gradN / sqrt(gradN * gradN + 1);
-		float C = Kc * sinAlpha * sqrt(u * u + v * v) * clamp(d2, 0, 1);
+		float C = Kc * sinAlpha * sqrt(u * u + v * v) * clamp(d2, 0, 1); //Si eau trop faible < 0.001 ne peut dissoudre, donc C passe à 0
 		
 		uint topTerrainLayerId = getTopLayerId(pointIJ.x, pointIJ.y, false);
 		float topTerrainDHOut = 0.; //Pour ce qui se dissout eventuellement
@@ -208,8 +210,10 @@ void main() {
 			topTerrainDHOut = min(Ks[topTerrainLayerId] * (C - s), ThicknessR[getIndex(pointIJ.x, pointIJ.y)][topTerrainLayerId]); //On n'enleve pas plus que la qqt disponible !!!
 			outputS = outputS + topTerrainDHOut;
 		}
-		else { //Eau sature depose des sediments, i.e. depose dans le sable
+		else { //Eau sature depose des sediments, i.e. depose dans le sable, si plus d'eau dans cellule dépose tout d'un coup pour eviter d'avoir des cellules sans eau mais avec sediment
 			sandDHIn = Kd * (s - C);
+			//Si d2 = 0 (< 0.0000001 depose tout d'un coup c'est à dire Kd = 1, car dans ce cas C = 0 aussi. Idee mettre Kd en fonction de l'epaisseur d'eau
+			if (d2 == 0) sandDHIn = s; //==0 car force à 0 avant si trop petit BONNNE IDEE ??????
 			outputS = max(0., outputS - sandDHIn);
 		}
 

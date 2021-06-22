@@ -795,7 +795,7 @@ void initGPUprograms() {
     CheckGlErrors("Hydraulic Erosion A 2");
 
     g_computeProgramHydraulicB = glCreateProgram();
-    shaderSourceString = file2String("../computeShader/hydraulicErosionB.glsl");
+    shaderSourceString = file2String("../computeShader/hydraulicErosionBForward.glsl");
     //Ajout de l'entête
     shaderSourceString = computeShaderHeader + shaderSourceString;
     loadShader(g_computeProgramHydraulicB, GL_COMPUTE_SHADER, shaderSourceString, "Hydraulic Erosion B");
@@ -895,6 +895,12 @@ void initBuffersAndUniforms() {
     loc = glGetUniformLocation(g_computeProgramHydraulicB, "gridWidth");
     if (loc == -1) std::cout << "ERROR WITH UNIFORM gridWidth CP HB" << std::endl;
     glUniform1i(loc, mesh->getGridWidth());
+    loc = glGetUniformLocation(g_computeProgramHydraulicB, "cellHeight");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM cellHeight CP HB" << std::endl;
+    glUniform1f(loc, mesh->getCellHeight());
+    loc = glGetUniformLocation(g_computeProgramHydraulicB, "cellWidth");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM cellWidth CP HB" << std::endl;
+    glUniform1f(loc, mesh->getCellWidth());
     loc = glGetUniformLocation(g_computeProgramHydraulicB, "dt");
     if (loc == -1) std::cout << "ERROR WITH UNIFORM dt CP HB" << std::endl;
     glUniform1f(loc, g_dt);
@@ -1158,8 +1164,8 @@ int main(int argc, char ** argv) {
     GLuint swapBuffT = 0;
     GLuint swapBuffF = 0;
     GLuint swapBuffS = 0;
-    unsigned int nbOfItT = 500;
-    unsigned int nbOfItH = 1000000;
+    unsigned int nbOfItT = 0;
+    unsigned int nbOfItH = 10000;
     while(!glfwWindowShouldClose(g_window)) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Erase the color and z buffers.
 
