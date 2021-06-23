@@ -21,11 +21,14 @@ layout(std430, binding = 4) readonly buffer Vel {
 	float Velocity[][2];
 };
 
+layout(std430, binding = 5) readonly buffer Sed {
+	float Sediment[];
+};
+
 uniform int gridHeight, gridWidth; 
 uniform float cellHeight, cellWidth;
 uniform vec4 layersColor[NB_OF_LAYERS];
-uniform bool renderWater;
-uniform bool displayVel;
+uniform bool renderWater, displayVel, displaySed;
 
 layout(local_size_x = PATCH_HEIGHT, local_size_y = PATCH_WIDTH, local_size_z = 1) in;
 //x correspond à i et y correspond à j
@@ -151,7 +154,13 @@ vec4 velocityToColor(int i, int j) {
 
 	vec3 RGB = hueToRGB(theta);
 
-	return vec4(RGB, 0.5);
+	return vec4(RGB, 1.);
+}
+
+vec4 sedimentToColor(int i, int j) {
+	float sedC = clamp(100. * Sediment[getIndex(i, j)], 0., 1.); //Paramètre 100 à tune à la main ajouter slider sur IMGUI ?
+	vec4 pointColor = layersColor[getTopLayerId(i, j, renderWater)];
+	return vec4((1. - sedC) * pointColor.xyz + sedC * vec3(1., 0., 0.), pointColor.w);
 }
 
 
@@ -176,6 +185,7 @@ void main() {
 
 		//Update color
 		ColorsW[getIndex(i, j)] = layersColor[getTopLayerId(i, j, renderWater)];
+		if (displaySed && renderWater) ColorsW[getIndex(i, j)] = sedimentToColor(i, j);
 		if (displayVel && renderWater) ColorsW[getIndex(i, j)] = velocityToColor(i, j);
 	}
 }

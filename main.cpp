@@ -82,15 +82,17 @@ GLuint g_gridLayersHeightVboR = 0; //b0(i,j), b1(i,j), ..., bNbOfLayers(i,j) ...
 GLuint g_gridLayersHeightVboW = 0; //R aura le role de t et W de t + dt (puis swap) : en pratique on lit dans celui pointé par R et on écrit dans celui pointé par W
 GLuint g_waterFlowsVboR = 0; //B (i - 1, j) , L (i, j - 1), R (i, j + 1), T (i + 1, j)
 GLuint g_waterFlowsVboW = 0;
-GLuint g_waterVelocity = 0; //En R et W : v (vitesse direction i), u (vitesse direction j)
-GLuint g_waterSedimentR = 0;
-GLuint g_waterSedimentW = 0;
+GLuint g_waterVelocityVbo = 0; //En R et W : v (vitesse direction i), u (vitesse direction j)
+GLuint g_waterSedimentVboR = 0;
+GLuint g_waterSedimentVboW = 0;
 //... Cf article pour autre buffer necessaire
 GLuint g_ibo = 0;
-//Variable pour l'affichage
-bool g_displayWater = true;
-bool g_displayVel = true;
-bool g_displaySed = true;
+//Variable pour l'interaction en int à cause de IMGUI
+int g_displayWater = true;
+int g_displayVel = false;
+int g_displaySed = false;
+int g_goThermal = false;
+int g_goHydraulic = false;
 
 //Debug
 float* points;
@@ -929,6 +931,9 @@ void initBuffersAndUniforms() {
     loc = glGetUniformLocation(g_computeForRendering, "displayVel");
     if (loc == -1) std::cout << "ERROR WITH UNIFORM displayVel R" << std::endl;
     glUniform1i(loc, g_displayVel);
+    loc = glGetUniformLocation(g_computeForRendering, "displaySed");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM displaySed R" << std::endl;
+    glUniform1i(loc, g_displaySed);
     glUseProgram(0);
 
     std::cout << "---INIT UNIFORMS DONE---" << std::endl;
@@ -979,17 +984,17 @@ void initBuffersAndUniforms() {
     glBufferStorage(GL_ARRAY_BUFFER, vertexBufferSize, flowTmp.data(), 0);
 
     vertexBufferSize = 2 * sizeof(float) * mesh->getGridHeight() * mesh->getGridWidth();
-    glCreateBuffers(1, &g_waterVelocity);
-    glBindBuffer(GL_ARRAY_BUFFER, g_waterVelocity);
+    glCreateBuffers(1, &g_waterVelocityVbo);
+    glBindBuffer(GL_ARRAY_BUFFER, g_waterVelocityVbo);
     glBufferStorage(GL_ARRAY_BUFFER, vertexBufferSize, NULL, 0);
 
     vertexBufferSize = sizeof(float) * mesh->getGridHeight() * mesh->getGridWidth();
-    glCreateBuffers(1, &g_waterSedimentR);
-    glBindBuffer(GL_ARRAY_BUFFER, g_waterSedimentR);
+    glCreateBuffers(1, &g_waterSedimentVboR);
+    glBindBuffer(GL_ARRAY_BUFFER, g_waterSedimentVboR);
     glBufferStorage(GL_ARRAY_BUFFER, vertexBufferSize, NULL, 0);
 
-    glCreateBuffers(1, &g_waterSedimentW);
-    glBindBuffer(GL_ARRAY_BUFFER, g_waterSedimentW);
+    glCreateBuffers(1, &g_waterSedimentVboW);
+    glBindBuffer(GL_ARRAY_BUFFER, g_waterSedimentVboW);
     glBufferStorage(GL_ARRAY_BUFFER, vertexBufferSize, NULL, 0);
 
     vertexBufferSize = 4 * sizeof(float) * mesh->getGridHeight() * mesh->getGridWidth();
@@ -1027,6 +1032,15 @@ void setDisplayVelocity() {
     glUseProgram(0);
 }
 
+void setDisplaySediment() {
+    glUseProgram(g_computeForRendering);
+    GLuint loc = glGetUniformLocation(g_computeForRendering, "displaySed");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM displaySed R" << std::endl;
+    glUniform1i(loc, g_displaySed);
+
+    glUseProgram(0);
+}
+
 void initCamera() {
     int width, height;
     glfwGetWindowSize(g_window, &width, &height);
@@ -1050,53 +1064,58 @@ void renderImGui() {
     ImGui::Begin("Control Widget");
     ImGui::SetWindowSize(ImVec2(0, 0));
     static float layer1_col = 0.0;
-    //ImGui::SliderFloat("Layer 1 color", &layer1_col, 0, 255.f);
     static float layer2_col = 0.0;
-    //ImGui::SliderFloat("Layer 2 color", &layer2_col, 0, 255.f);
     static float translation[] = {0.0, 0.0};
-    //ImGui::SliderFloat2("position", translation, -1.0, 1.0);
 
     ImGui::Separator();
+    //ImGui::SliderFloat("Erosion coefficient", &erosionCoeff, 0, 1);
 
-    ImGui::Text("Erosion:");
-
-    ImGui::Spacing();
-    ImGui::Spacing();
-
-    static float thetaLimit = 0.3;
-    static float erosionCoeff = 0.3;
-    static float dt = 0.0001;
-
-    ImGui::SliderFloat("Theta", &thetaLimit, 0, PI/2);
-    ImGui::SliderFloat("Erosion coefficient", &erosionCoeff, 0, 1);
-    ImGui::SliderFloat("Dt", &dt, 0, 1); //Faudrait plutot 0.000001 à 0.1 genre juste les puissance de 10 si possible
-
-    //if (ImGui::Button("Start thermal erosion")) {
-    //    mesh->thermalErosion(thetaLimit, erosionCoeff, dt);
-    //}
-
-    if (ImGui::TreeNode("Display")) {
-        static int e = 0;
-        if (ImGui::RadioButton("Edged", &e, 1)) {
-            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-        }
+    if (ImGui::TreeNode("Thermal Erosion")) {
+        ImGui::RadioButton("Go thermal", &g_goThermal, 1);
         ImGui::SameLine();
+        ImGui::RadioButton("Ungo thermal", &g_goThermal, 0);
 
-        if (ImGui::RadioButton("Full", &e, 0)) {
-            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-        }
         ImGui::TreePop();
     }
 
-    ImGui::Separator();
+    if (ImGui::TreeNode("Hydraulic Erosion")) {
+        ImGui::RadioButton("Go hydraulic", &g_goHydraulic, 1);
+        ImGui::SameLine();
+        ImGui::RadioButton("Ungo hydraulic", &g_goHydraulic, 0);
 
-    if (ImGui::TreeNode("Range Widgets"))
-    {
-        static float begin = 10, end = 90;
-        static int begin_i = 100, end_i = 1000;
-        ImGui::DragFloatRange2("range float", &begin, &end, 0.25f, 0.0f, 100.0f, "Min: %.1f %%", "Max: %.1f %%", ImGuiSliderFlags_AlwaysClamp);
-        ImGui::DragIntRange2("range int", &begin_i, &end_i, 5, 0, 1000, "Min: %d units", "Max: %d units");
-        ImGui::DragIntRange2("range int (no bounds)", &begin_i, &end_i, 5, 0, 0, "Min: %d units", "Max: %d units");
+        ImGui::TreePop();
+    }
+
+    if (ImGui::TreeNode("Display")) {
+        static int e1 = 0;
+        if (ImGui::RadioButton("Edged", &e1, 1)) {
+            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        }
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Full", &e1, 0)) {
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        }
+
+        ImGui::RadioButton("Display water", &g_displayWater, 1);
+        ImGui::SameLine();
+        ImGui::RadioButton("Hide water", &g_displayWater, 0);
+
+        if (ImGui::RadioButton("Display velocity", &g_displayVel, 1)) {
+            setDisplayVelocity();
+        }
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Hide velocity", &g_displayVel, 0)) {
+            setDisplayVelocity();
+        }
+
+        if (ImGui::RadioButton("Display sediment", &g_displaySed, 1)) {
+            setDisplaySediment();
+        }
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Hide sediment", &g_displaySed, 0)) {
+            setDisplaySediment();
+        }
+
         ImGui::TreePop();
     }
 
@@ -1180,12 +1199,10 @@ int main(int argc, char ** argv) {
     GLuint swapBuffT = 0;
     GLuint swapBuffF = 0;
     GLuint swapBuffS = 0;
-    unsigned int nbOfItT = 500000;
-    unsigned int nbOfItH = 500000;
     while(!glfwWindowShouldClose(g_window)) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Erase the color and z buffers.
 
-        if (nbOfItT > 0) {
+        if (g_goThermal) {
             //Phase de calculs :
             glUseProgram(g_computeProgram);
             //Bind les buffer du compute shader :
@@ -1199,11 +1216,9 @@ int main(int argc, char ** argv) {
             swapBuffT = g_gridLayersHeightVboR;
             g_gridLayersHeightVboR = g_gridLayersHeightVboW;
             g_gridLayersHeightVboW = swapBuffT;
-
-            nbOfItT -= 1;
         }
 
-        if (nbOfItH > 0) {
+        if (g_goHydraulic) {
             //Etape A
             //Phase de calculs :
             glUseProgram(g_computeProgramHydraulicA);
@@ -1212,8 +1227,8 @@ int main(int argc, char ** argv) {
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, g_gridLayersHeightVboW);
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, g_waterFlowsVboR);
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, g_waterFlowsVboW);
-            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, g_waterVelocity);
-            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, g_waterSedimentR);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, g_waterVelocityVbo);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, g_waterSedimentVboR);
             //Appelle au compute shader
             glDispatchCompute(g_nbGroupsX, g_nbGroupsY, 1); //Dimension 2D de l'espace d'invocation x correspond à i et y à j
             glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
@@ -1230,20 +1245,18 @@ int main(int argc, char ** argv) {
             //Etape B:
             glUseProgram(g_computeProgramHydraulicB);
             //Bind les buffer du compute shader :
-            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, g_waterSedimentR);
-            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, g_waterSedimentW);
-            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, g_waterVelocity);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, g_waterSedimentVboR);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, g_waterSedimentVboW);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, g_waterVelocityVbo);
             
             //Appelle au compute shader
             glDispatchCompute(g_nbGroupsX, g_nbGroupsY, 1); //Dimension 2D de l'espace d'invocation x correspond à i et y à j
             glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
             //Swap les buffer R et W
-            swapBuffS = g_waterSedimentR;
-            g_waterSedimentR = g_waterSedimentW;
-            g_waterSedimentW = swapBuffS;
-
-            nbOfItH -= 1;
+            swapBuffS = g_waterSedimentVboR;
+            g_waterSedimentVboR = g_waterSedimentVboW;
+            g_waterSedimentVboW = swapBuffS;
         }
 
 
@@ -1264,23 +1277,26 @@ int main(int argc, char ** argv) {
         glUseProgram(g_program);
         render();
 
-        ////Phase de rendering de l'eau:
-        ////Update avant render (normales et hauteur)
-        glUseProgram(g_computeForRendering);
-        loc = glGetUniformLocation(g_computeForRendering, "renderWater");
-        glUniform1i(loc, true);
-        //Bind les buffer du compute shader :
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, g_gridLayersHeightVboR);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, g_gridNormalsVbo);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, g_gridHeightsVbo);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, g_gridColorsVbo);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, g_waterVelocity);
-        //Appelle au compute shader
-        glDispatchCompute(g_nbGroupsX, g_nbGroupsY, 1); //Dimension 2D de l'espace d'invocation x correspond à i et y à j
-        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+        if (g_displayWater) {
+            ////Phase de rendering de l'eau:
+            ////Update avant render (normales et hauteur)
+            glUseProgram(g_computeForRendering);
+            loc = glGetUniformLocation(g_computeForRendering, "renderWater");
+            glUniform1i(loc, true);
+            //Bind les buffer du compute shader :
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, g_gridLayersHeightVboR);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, g_gridNormalsVbo);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, g_gridHeightsVbo);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, g_gridColorsVbo);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, g_waterVelocityVbo);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, g_waterSedimentVboR);
+            //Appelle au compute shader
+            glDispatchCompute(g_nbGroupsX, g_nbGroupsY, 1); //Dimension 2D de l'espace d'invocation x correspond à i et y à j
+            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
-        glUseProgram(g_program);
-        render();
+            glUseProgram(g_program);
+            render();
+        }
 
         //Render Imgui
         renderImGui();
