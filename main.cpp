@@ -104,7 +104,11 @@ int g_resolutionX = 1;
 int g_resolutionY = 1;
 std::vector<float> noiseVector;
 std::vector<glm::vec2> randomGradients; //liste de gradients random de norme 1
+
+//fbm
 int g_number_octaves = 10;
+int g_lacunarity = 2;
+float g_attenuation = 0.5;
 
 GLFWwindow* g_window2 = nullptr;
 
@@ -458,15 +462,6 @@ Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec
         free(gray_img);
     }
 
-    //Pour les coordonnées des textures, on avance de 1/resolution pour remplir avec la texture entre 0 et 1
-    //m_vertexTexCoords = {};
-    /*for (int i = 0; i < height; i++) {
-        for (int j = 0; j < width; j++) {
-            //m_vertexTexCoords.push_back(float(j) / (width - 1)); //x
-            //m_vertexTexCoords.push_back(float(i) / (height - 1)); //y
-        }
-    }*/
-
     //Creation des buffers et création du vao
     //Create a single handle that joins together attributes (vertex positions,
     //normals) and connectivity (triangles indices)
@@ -515,70 +510,6 @@ Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec
     glBindVertexArray(0);
     glBindVertexArray(0);
 }
-
-/*Mesh::Mesh(const int nbOfLayers, const int width, const int height, const int mode, const std::vector<glm::vec3> layersColor, const glm::vec4& corners, const glm::vec2& e) {
-    m_nbOfLayers = nbOfLayers;
-    m_layersColor = layersColor;
-    m_gridTopLeftCorner = glm::vec2(corners.x, corners.y);
-    m_gridBottomRightCorner = glm::vec2(corners.z, corners.w);
-    float emin = e.x;
-    float emax = e.y;
-
-    for (unsigned int k = 0; k < m_nbOfLayers; k = k + 1) {
-        unsigned char* gray_img = createHeightMapFault(width, height, g_fault_mode, g_fault_niter);
-
-        //Met a jour la taille de la grille avec la valeur de la première map
-        if (k == 0) {
-            m_gridWidth = width;
-            m_gridHeight = height;
-
-            m_cellWidth = abs(m_gridBottomRightCorner.x - m_gridTopLeftCorner.x) / (width - 1.f);
-            m_cellHeight = abs(m_gridBottomRightCorner.y - m_gridTopLeftCorner.y) / (height - 1.f);
-
-            //std::cout << m_cellHeight << " " << m_cellHeight << std::endl;
-
-            m_layersThickness.resize(m_nbOfLayers * m_gridWidth * m_gridHeight);
-            m_vertexPositions.resize(3 * m_gridWidth * m_gridHeight);
-            m_vertexNormals.resize(3 * m_gridWidth * m_gridHeight);
-            m_vertexColors.resize(3 * m_gridWidth * m_gridHeight);
-
-            for (int i = 0; i < m_gridWidth * m_gridHeight - m_gridWidth; i++) {
-                if (i % m_gridWidth != m_gridWidth - 1) {
-                    m_triangleIndices.push_back(i);
-                    m_triangleIndices.push_back(i + m_gridWidth);
-                    m_triangleIndices.push_back(i + 1);
-                    m_triangleIndices.push_back(i + 1);
-                    m_triangleIndices.push_back(i + m_gridWidth);
-                    m_triangleIndices.push_back(i + m_gridWidth + 1);
-                }
-            }
-        }
-
-        //Verfier que bonne dim
-        if (width != m_gridWidth || height != m_gridHeight) {
-            std::cout << "ERROR : wrong size" << std::endl;
-            break;
-        }
-
-        for (int i = 0; i < height; i++) {
-            for (int j = 0; j < width; j++) {
-                int src_index = j + width * i; //Image déroule ligne par ligne numComponents * j + numComponents * width< * i (au cas ou)
-                setLayerThickness(gray_img[src_index] / 255.f * (emax - emin) + emin, k, i, j);
-            }
-        }
-
-        free(gray_img);
-    }
-
-    //Pour les coordonnées des textures, on avance de 1/resolution pour remplir avec la texture entre 0 et 1
-    //m_vertexTexCoords = {};
-    for (int i = 0; i < height; i++) {
-        for (int j = 0; j < width; j++) {
-            m_vertexTexCoords.push_back(float(j)); //x
-            m_vertexTexCoords.push_back(float(i)); //y
-        }
-    }
-}*/
 
 unsigned int Mesh::getTopLayerId(unsigned int i, unsigned int j) const {
     unsigned int id = m_nbOfLayers - 1;
@@ -1427,8 +1358,6 @@ float Mesh::perlinNoise(float x, float y, int resolutionX, int resolutionY) {
 
 
 float Mesh::fractionalBrownianMotion(float x, float y, int numberOfOctaves) {
-    float lacunarity = 2;
-    float attenuation = 0.5;
     float noise = 0;
 
     float amplitude = 1;
@@ -1437,8 +1366,8 @@ float Mesh::fractionalBrownianMotion(float x, float y, int numberOfOctaves) {
     for (unsigned int k = 0; k < numberOfOctaves; k++)
     {
         noise += amplitude * perlinNoise(x,y,1,1); //on le fait sur le bruit de perlin
-        frequency *= lacunarity;
-        amplitude *= attenuation;
+        frequency *= g_lacunarity;
+        amplitude *= g_attenuation;
     }
 
     return noise;
@@ -1994,7 +1923,14 @@ void renderImGui() {
         ImGui::SliderInt("Min height", &g_min_height_perlin, 0, g_max_height_perlin);
         ImGui::SliderInt("Resolution en X", &g_resolutionX, 1, 10);
         ImGui::SliderInt("Resolution en Y", &g_resolutionY, 1, 10);
-        ImGui::SliderInt("Number of octaves (for FBM)", &g_number_octaves, 1, 100);
+
+        ImGui::Spacing();
+        ImGui::Text("For Fractional Brownian Motion");
+        ImGui::Spacing();
+
+        ImGui::SliderInt("Number of octaves", &g_number_octaves, 1, 100);
+        ImGui::SliderInt("Lacunarity (*frequence)", &g_lacunarity, 1, 10);
+        ImGui::SliderFloat("attenuation (*amplitude)", &g_attenuation, 0, 1);
         
         ImGui::TreePop();
     }
@@ -2183,11 +2119,8 @@ void init() {
     //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleW.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(20.f / 255.f, 107.f / 255.f, 150.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 1.f)); //cpu
 
     //mesh = new Mesh({ "../data/simpleB.png", "../data/sand-with-water.png","../data/sand-with-water.png" }, { glm::vec4(120.f / 255.f, 135.f / 255.f, 124.f / 255.f, 1.f), glm::vec4(148.f / 255.f, 124.f / 255.f, 48.f / 255.f, 1.f), glm::vec4(39.f / 255.f, 112.f / 255.f, 125.f / 255.f, 100.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
-    //mesh = new Mesh({ "../data/simpleB.png","../data/heightmap3_100.jpg", "../data/water_source.jpg" }, { glm::vec4(120.f / 255.f, 135.f / 255.f, 124.f / 255.f, 1.f), glm::vec4(148.f / 255.f, 124.f / 255.f, 48.f / 255.f, 1.f), glm::vec4(39.f / 255.f, 112.f / 255.f, 125.f / 255.f, 100.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
-
+    mesh = new Mesh({ "../data/simpleB.png","../data/simpleS.png", "../data/water_source.jpg" }, { glm::vec4(120.f / 255.f, 135.f / 255.f, 124.f / 255.f, 1.f), glm::vec4(148.f / 255.f, 124.f / 255.f, 48.f / 255.f, 1.f), glm::vec4(39.f / 255.f, 112.f / 255.f, 125.f / 255.f, 100.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
     initGPUprogram();
-    //g_sunID = loadTextureFromFileToGPU("../data/heightmap3.jpg");
-    //mesh->init(); //gpu
     initCamera();
     initImGui();
 }
