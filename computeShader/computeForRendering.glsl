@@ -1,4 +1,5 @@
 //Permet de calculer les normales du terrain et la hauteur du terrain en chaque i,j avant le rendering
+#define PI 3.14159265
 
 layout(std430, binding = 0) readonly buffer ThickR {
 	float ThicknessR[][NB_OF_LAYERS];
@@ -16,10 +17,15 @@ layout(std140, binding = 3) writeonly buffer ColW {
 	vec4 ColorsW[];
 };
 
+layout(std430, binding = 4) readonly buffer Vel {
+	float Velocity[][2];
+};
+
 uniform int gridHeight, gridWidth; 
 uniform float cellHeight, cellWidth;
 uniform vec4 layersColor[NB_OF_LAYERS];
 uniform bool renderWater;
+uniform bool displayVel;
 
 layout(local_size_x = PATCH_HEIGHT, local_size_y = PATCH_WIDTH, local_size_z = 1) in;
 //x correspond à i et y correspond à j
@@ -88,6 +94,66 @@ uint getTopLayerId(int i, int j, bool renderWater) {
 	return id;
 }
 
+vec3 hueToRGB(float H) { //Avec H dans 0, 360
+	//Conversion de HSV en RGB
+	float V = 0.5;
+	float S = 1;
+	float C = V * S;
+	H = H / 60.;
+	float X = C * (1 - abs(mod(H, 2) - 1));
+
+	vec3 RGB;
+	if ((0. <= H) && (H <= 1.)) {
+		RGB.x = C;
+		RGB.y = X;
+		RGB.z = 0;
+	}
+	else if ((1. < H) && (H <= 2.)) {
+		RGB.x = X;
+		RGB.y = C;
+		RGB.z = 0;
+	}
+	else if ((2. < H) && (H <= 3.)) {
+		RGB.x = 0;
+		RGB.y = C;
+		RGB.z = X;
+	}
+	else if ((3. < H) && (H <= 4.)) {
+		RGB.x = 0;
+		RGB.y = X;
+		RGB.z = C;
+	}
+	else if ((4. < H) && (H <= 5.)) {
+		RGB.x = X;
+		RGB.y = 0;
+		RGB.z = C;
+	}
+	else if ((5. < H) && (H <= 6.)) {
+		RGB.x = C;
+		RGB.y = 0;
+		RGB.z = X;
+	}
+
+	float m = V - C;
+	RGB += vec3(m, m, m);
+
+	return RGB;
+}
+
+vec4 velocityToColor(int i, int j) {
+	vec2 vel = vec2(Velocity[getIndex(i, j)][0], Velocity[getIndex(i, j)][1]);
+	vel = normalize(vel);
+	float theta = PI / 2. + atan(vel.x / vel.y); //Dans 0, 2PI
+	if (vel.y < 0) {
+		theta += PI;
+	}
+	theta = (theta / (2. * PI)) * 360.; //Dans 0, 360
+
+	vec3 RGB = hueToRGB(theta);
+
+	return vec4(RGB, 0.5);
+}
+
 
 void main() {
 	const ivec2 pointIJ = ivec2(gl_GlobalInvocationID);
@@ -110,5 +176,6 @@ void main() {
 
 		//Update color
 		ColorsW[getIndex(i, j)] = layersColor[getTopLayerId(i, j, renderWater)];
+		if (displayVel && renderWater) ColorsW[getIndex(i, j)] = velocityToColor(i, j);
 	}
 }

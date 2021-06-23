@@ -39,9 +39,9 @@ const ivec2 neighborTranslations[4] = ivec2[4](
 	ivec2(0, 1),
 	ivec2(1, 0));
 const float g = 9.81;
-const float Kc = 1;
-const float Ks[NB_OF_LAYERS - 1] = float[NB_OF_LAYERS - 1](0, 0.05); //0 pour la bedrock car non soluble
-const float Kd = 0.001;
+const float Kc = 1; //A tune
+const float Ks[NB_OF_LAYERS - 1] = float[NB_OF_LAYERS - 1](0, 0.001); //0 pour la bedrock car non soluble - A tune
+const float Kd = 0.001; //A tune
 
 shared float flowOut[PATCH_W_NEIGHBORHOOD_HEIGHT][PATCH_W_NEIGHBORHOOD_WIDTH][4]; //4 connexite
 

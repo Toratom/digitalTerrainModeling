@@ -87,6 +87,10 @@ GLuint g_waterSedimentR = 0;
 GLuint g_waterSedimentW = 0;
 //... Cf article pour autre buffer necessaire
 GLuint g_ibo = 0;
+//Variable pour l'affichage
+bool g_displayWater = true;
+bool g_displayVel = true;
+bool g_displaySed = true;
 
 //Debug
 float* points;
@@ -795,7 +799,7 @@ void initGPUprograms() {
     CheckGlErrors("Hydraulic Erosion A 2");
 
     g_computeProgramHydraulicB = glCreateProgram();
-    shaderSourceString = file2String("../computeShader/hydraulicErosionBForward.glsl");
+    shaderSourceString = file2String("../computeShader/hydraulicErosionBForward.glsl"); //hydraulicErosionBForward.glsl
     //Ajout de l'entête
     shaderSourceString = computeShaderHeader + shaderSourceString;
     loadShader(g_computeProgramHydraulicB, GL_COMPUTE_SHADER, shaderSourceString, "Hydraulic Erosion B");
@@ -922,6 +926,9 @@ void initBuffersAndUniforms() {
     loc = glGetUniformLocation(g_computeForRendering, "layersColor");
     if (loc == -1) std::cout << "ERROR WITH UNIFORM layersColor R" << std::endl;
     glUniform4fv(loc, NB_OF_LAYERS, mesh->getLayersColor().data());
+    loc = glGetUniformLocation(g_computeForRendering, "displayVel");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM displayVel R" << std::endl;
+    glUniform1i(loc, g_displayVel);
     glUseProgram(0);
 
     std::cout << "---INIT UNIFORMS DONE---" << std::endl;
@@ -1009,6 +1016,15 @@ void initBuffersAndUniforms() {
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     std::cout << "---INIT BUFFERS DONE---" << std::endl;
+}
+
+void setDisplayVelocity() {
+    glUseProgram(g_computeForRendering);
+    GLuint loc = glGetUniformLocation(g_computeForRendering, "displayVel");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM displayVel R" << std::endl;
+    glUniform1i(loc, g_displayVel);
+
+    glUseProgram(0);
 }
 
 void initCamera() {
@@ -1122,7 +1138,7 @@ void init() {
     //    glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
     mesh = new Mesh({ "../data/simpleB.png", "../data/sand-with-water.png", "../data/water-around-sand.png" },
         { glm::vec4(120.f / 255.f, 135.f / 255.f, 124.f / 255.f, 1.f), glm::vec4(148.f / 255.f, 124.f / 255.f, 48.f / 255.f, 1.f), glm::vec4(39.f / 255.f, 112.f / 255.f, 125.f / 255.f, 0.2) },
-        { 0.f , 0.3f, 0.f },
+        { 0.f , 0.05f, 0.f },
         { 0.f, 0.3f, 0.f },
         glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
                                                                
@@ -1164,8 +1180,8 @@ int main(int argc, char ** argv) {
     GLuint swapBuffT = 0;
     GLuint swapBuffF = 0;
     GLuint swapBuffS = 0;
-    unsigned int nbOfItT = 0;
-    unsigned int nbOfItH = 10000;
+    unsigned int nbOfItT = 500000;
+    unsigned int nbOfItH = 500000;
     while(!glfwWindowShouldClose(g_window)) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Erase the color and z buffers.
 
@@ -1258,6 +1274,7 @@ int main(int argc, char ** argv) {
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, g_gridNormalsVbo);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, g_gridHeightsVbo);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, g_gridColorsVbo);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, g_waterVelocity);
         //Appelle au compute shader
         glDispatchCompute(g_nbGroupsX, g_nbGroupsY, 1); //Dimension 2D de l'espace d'invocation x correspond à i et y à j
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
