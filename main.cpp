@@ -78,7 +78,7 @@ bool g_waterarriving = true;
 bool g_water_render = true;
 float g_water_flow = 10.f;
 int g_water_coords[2] = {50, 50};
-float g_k_h[3] = {0.03f, 0.03f, 0.03f};
+float g_k_h[3] = {10.f, 0.5f, 0.000001f};
 
 //Fault parameters
 int g_fault_mode = 2;
@@ -1168,7 +1168,7 @@ void Mesh::hydraulicErosion(unsigned int N, float dt, float k[3]) {
                 //C = kc * glm::length(glm::vec2(u, v));
                 grad = glm::length(getGradient(i, j, false));
                 sin_alpha = grad / sqrt(grad * grad + 1);
-                C = kc * (sin_alpha + 5.f) * std::max(0.01f, glm::length(glm::vec2(u, v))) * getLayerThickness(m_nbOfLayers - 1, i, j) / (g_h_max - g_h_min);
+                C = kc * (sin_alpha + 2.f) * std::max(0.01f, glm::length(glm::vec2(u, v))) * getLayerThickness(m_nbOfLayers - 1, i, j) / (g_h_max - g_h_min);
                 //std::cout << getLayersVelocity(i, j).x << std::endl;
                 //std::cout << u << " " << v <<  " " << C << std::endl;
 
@@ -1824,7 +1824,7 @@ void renderImGui() {
 
         ImGui::SliderFloat("Dt hydraulic", &g_dt_h, 0.000001f, 0.1f, "%f", ImGuiSliderFlags_Logarithmic);
         ImGui::SliderInt("Number of iterations hydraulic", &g_iter_h, 1, 1000);
-        ImGui::SliderFloat3("kc, ks, kd", g_k_h, 0.0f, 1.0f, "%f", ImGuiSliderFlags_Logarithmic);
+        ImGui::SliderFloat3("kc, ks, kd", g_k_h, 0.0f, 10.f, "%f", ImGuiSliderFlags_Logarithmic);
         ImGui::SliderInt2("Water coords", g_water_coords, 0, 100);
         ImGui::SliderFloat("Water flow", &g_water_flow, -100.f, 100.f);
         ImGui::TreePop();
@@ -2137,6 +2137,12 @@ void init() {
     initGLFW();
     initOpenGL();
     //mesh = new Mesh({ "../data/heightmap5.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f)}, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 1.f)); //cpu
+
+    //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleS.png", "../data/simpleB.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
+    //mesh = new Mesh({ "../data/simpleB.png", "../data/sand-with-water.png","../data/simpleB.png" }, { glm::vec4(120.f / 255.f, 135.f / 255.f, 124.f / 255.f, 1.f), glm::vec4(148.f / 255.f, 124.f / 255.f, 48.f / 255.f, 1.f), glm::vec4(39.f / 255.f, 112.f / 255.f, 125.f / 255.f, 100.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
+    //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleStr.png","../data/simpleB.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(148.f / 255.f, 124.f / 255.f, 48.f / 255.f), glm::vec3(0.f / 255.f, 0.f / 255.f, 255.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 5.f)); //cpu
+    //mesh = new Mesh({ "../data/simpleB.png", "../data/simpleW.png" }, { glm::vec3(120.f / 255.f, 135.f / 255.f, 124.f / 255.f), glm::vec3(20.f / 255.f, 107.f / 255.f, 150.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 1.f)); //cpu
+
     //mesh = new Mesh({ "../data/simpleB.png", "../data/sand-with-water.png","../data/sand-with-water.png" }, { glm::vec4(120.f / 255.f, 135.f / 255.f, 124.f / 255.f, 1.f), glm::vec4(148.f / 255.f, 124.f / 255.f, 48.f / 255.f, 1.f), glm::vec4(39.f / 255.f, 112.f / 255.f, 125.f / 255.f, 100.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
     mesh = new Mesh({ "../data/simpleB.png","../data/simpleS.png", "../data/water_source.jpg" }, { glm::vec4(120.f / 255.f, 135.f / 255.f, 124.f / 255.f, 1.f), glm::vec4(148.f / 255.f, 124.f / 255.f, 48.f / 255.f, 1.f), glm::vec4(39.f / 255.f, 112.f / 255.f, 125.f / 255.f, 100.f / 255.f) }, glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
     initGPUprogram();
