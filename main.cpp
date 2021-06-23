@@ -1365,7 +1365,7 @@ float Mesh::fractionalBrownianMotion(float x, float y, int numberOfOctaves) {
 
     for (unsigned int k = 0; k < numberOfOctaves; k++)
     {
-        noise += amplitude * perlinNoise(x,y,1,1); //on le fait sur le bruit de perlin
+        noise += amplitude * perlinNoise(x,y,g_resolutionX,g_resolutionY); //on le fait sur le bruit de perlin
         frequency *= g_lacunarity;
         amplitude *= g_attenuation;
     }
