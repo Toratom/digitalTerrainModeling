@@ -102,7 +102,11 @@ int g_resolutionX = 1;
 int g_resolutionY = 1;
 std::vector<float> noiseVector;
 std::vector<glm::vec2> randomGradients; //liste de gradients random de norme 1
+
+//fbm
 int g_number_octaves = 10;
+int g_lacunarity = 2;
+float g_attenuation = 0.5;
 
 GLFWwindow* g_window2 = nullptr;
 
@@ -1401,8 +1405,6 @@ float Mesh::perlinNoise(float x, float y, int resolutionX, int resolutionY) {
 
 
 float Mesh::fractionalBrownianMotion(float x, float y, int numberOfOctaves) {
-    float lacunarity = 2;
-    float attenuation = 0.5;
     float noise = 0;
 
     float amplitude = 1;
@@ -1411,8 +1413,8 @@ float Mesh::fractionalBrownianMotion(float x, float y, int numberOfOctaves) {
     for (unsigned int k = 0; k < numberOfOctaves; k++)
     {
         noise += amplitude * perlinNoise(x,y,1,1); //on le fait sur le bruit de perlin
-        frequency *= lacunarity;
-        amplitude *= attenuation;
+        frequency *= g_lacunarity;
+        amplitude *= g_attenuation;
     }
 
     return noise;
@@ -1957,7 +1959,14 @@ void renderImGui() {
         ImGui::SliderInt("Min height", &g_min_height_perlin, 0, g_max_height_perlin);
         ImGui::SliderInt("Resolution en X", &g_resolutionX, 1, 10);
         ImGui::SliderInt("Resolution en Y", &g_resolutionY, 1, 10);
-        ImGui::SliderInt("Number of octaves (for FBM)", &g_number_octaves, 1, 100);
+
+        ImGui::Spacing();
+        ImGui::Text("For Fractional Brownian Motion");
+        ImGui::Spacing();
+
+        ImGui::SliderInt("Number of octaves", &g_number_octaves, 1, 100);
+        ImGui::SliderInt("Lacunarity (*frequence)", &g_lacunarity, 1, 10);
+        ImGui::SliderFloat("attenuation (*amplitude)", &g_attenuation, 0, 1);
         
 
         ImGui::TreePop();
