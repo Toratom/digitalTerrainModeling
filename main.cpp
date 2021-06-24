@@ -925,6 +925,9 @@ void initBuffersAndUniforms() {
     loc = glGetUniformLocation(g_computeForRendering, "cellWidth");
     if (loc == -1) std::cout << "ERROR WITH UNIFORM cellWidth R" << std::endl;
     glUniform1f(loc, mesh->getCellWidth());
+    loc = glGetUniformLocation(g_computeForRendering, "dt");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM dt R" << std::endl;
+    glUniform1f(loc, g_dt);
     loc = glGetUniformLocation(g_computeForRendering, "layersColor");
     if (loc == -1) std::cout << "ERROR WITH UNIFORM layersColor R" << std::endl;
     glUniform4fv(loc, NB_OF_LAYERS, mesh->getLayersColor().data());

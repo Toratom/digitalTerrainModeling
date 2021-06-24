@@ -26,7 +26,7 @@ layout(std430, binding = 5) readonly buffer Sed {
 };
 
 uniform int gridHeight, gridWidth; 
-uniform float cellHeight, cellWidth;
+uniform float cellHeight, cellWidth, dt;
 uniform vec4 layersColor[NB_OF_LAYERS];
 uniform bool renderWater, displayVel, displaySed;
 
@@ -97,10 +97,8 @@ uint getTopLayerId(int i, int j, bool renderWater) {
 	return id;
 }
 
-vec3 hueToRGB(float H) { //Avec H dans 0, 360
+vec3 hueToRGB(float H, float S, float V) { //Avec H dans 0, 360
 	//Conversion de HSV en RGB
-	float V = 0.5;
-	float S = 1;
 	float C = V * S;
 	H = H / 60.;
 	float X = C * (1 - abs(mod(H, 2) - 1));
@@ -145,6 +143,8 @@ vec3 hueToRGB(float H) { //Avec H dans 0, 360
 
 vec4 velocityToColor(int i, int j) {
 	vec2 vel = vec2(Velocity[getIndex(i, j)][0], Velocity[getIndex(i, j)][1]);
+	float velMax = sqrt(pow(cellHeight / dt, 2.) + pow(cellWidth / dt, 2.));
+	float velNorm = length(vel);
 	vel = normalize(vel);
 	float theta = PI / 2. + atan(vel.x / vel.y); //Dans 0, 2PI
 	if (vel.y < 0) {
@@ -152,7 +152,10 @@ vec4 velocityToColor(int i, int j) {
 	}
 	theta = (theta / (2. * PI)) * 360.; //Dans 0, 360
 
-	vec3 RGB = hueToRGB(theta);
+	//S Calculer en fonction de l'amplitude de l'eau : velNorm / velMax avec = velMax la vitesse max car vitesse normalise par les cellules
+	float p = clamp(0.7 * velNorm / (0.01 * velMax), 0., 0.7);
+
+	vec3 RGB = hueToRGB(theta, 1., p);
 
 	return vec4(RGB, 1.);
 }
