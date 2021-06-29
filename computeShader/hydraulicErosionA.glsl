@@ -40,8 +40,8 @@ const ivec2 neighborTranslations[4] = ivec2[4](
 	ivec2(1, 0));
 const float g = 9.81;
 const float Kc = 1; //A tune
-const float Ks[NB_OF_LAYERS - 1] = float[NB_OF_LAYERS - 1](0, 0.001); //0 pour la bedrock car non soluble - A tune
-const float Kd = 0.001; //A tune
+const float Ks[NB_OF_LAYERS - 1] = float[NB_OF_LAYERS - 1](0, 0.0005); //0 pour la bedrock car non soluble - A tune
+const float Kd = 0.0005; //A tune
 
 shared float flowOut[PATCH_W_NEIGHBORHOOD_HEIGHT][PATCH_W_NEIGHBORHOOD_WIDTH][4]; //4 connexite
 
@@ -150,7 +150,7 @@ void main() {
 				}
 
 				//Calcule du coeff de normalisation K, pour eviter de perdre plus de matiere que la colonne courante du layer
-				 K = 0.; //Pour eviter des divisions qui explose, on met K à 0 si outFlowTot tres faible
+				 K = 1.; //Pour eviter des divisions qui explose, on met K à 0 si outFlowTot tres faible, pb peut etre a l'origine de point qui ne pert pas lors eau malgre pic
 				 if (flowOutTot > 0.0001) K = min(1., ThicknessR[getIndex(currentIJ.x, currentIJ.y)][indexOfWater] * A / (flowOutTot * dt));
 
 				//Applique normalisation
@@ -166,7 +166,7 @@ void main() {
 	memoryBarrierShared();
 
 	if (pointIJ.x < gridHeight && pointIJ.y < gridWidth) {
-	//On update la hauteur et la veloicty que si le point est dans la grille d'ou le if
+	//On update la hauteur et la velocity que si le point est dans la grille d'ou le if
 		//Phase 2 : calcul de ce qui entre, ce qui sort
 		currentXY = pointXY + offset; //Localisation de pointXY dans flowOut
 		float volumeOutTot = 0.;
@@ -184,7 +184,7 @@ void main() {
 		//La hauteur de l'eau update
 		float d1 = ThicknessR[getIndex(pointIJ.x, pointIJ.y)][indexOfWater];
 		float d2 = d1 + (volumeInTot - volumeOutTot) / A;
-		if (d2 < 0.000001) d2 = 0.; //Bonne idee ?
+		if (d2 < 0.0001) d2 = 0.; //Bonne idee ?
 		float dMean = (d2 + d1) / 2.;
 		//Vitesse de l'eau dans la direction de i, X = u
 		float deltaWI = (flowOut[currentXY.x - 1][currentXY.y][3] - flowOut[currentXY.x][currentXY.y][0] + flowOut[currentXY.x][currentXY.y][3] - flowOut[currentXY.x + 1][currentXY.y][0]) / 2.;

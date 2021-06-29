@@ -801,7 +801,7 @@ void initGPUprograms() {
     CheckGlErrors("Hydraulic Erosion A 2");
 
     g_computeProgramHydraulicB = glCreateProgram();
-    shaderSourceString = file2String("../computeShader/hydraulicErosionBForward.glsl"); //hydraulicErosionBForward.glsl
+    shaderSourceString = file2String("../computeShader/hydraulicErosionB.glsl"); //hydraulicErosionBForward.glsl
     //Ajout de l'entête
     shaderSourceString = computeShaderHeader + shaderSourceString;
     loadShader(g_computeProgramHydraulicB, GL_COMPUTE_SHADER, shaderSourceString, "Hydraulic Erosion B");
@@ -1158,7 +1158,9 @@ void init() {
     //    { 0.f , 0.3f, 0.f},
     //    { 0.f, 0.3f, 0.f},
     //    glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
-    mesh = new Mesh({ "../data/simpleB.png", "../data/sand-with-water.png", "../data/water-around-sand.png" },
+    //{ "../data/simpleB.png", "../data/sand-with-water.png", "../data/water-around-sand.png" }
+    //{ "../data/simpleB.png", "../data/picSand.png", "../data/thinPlane.png" }
+    mesh = new Mesh({ "../data/simpleB.png", "../data/sand-with-waterB.png", "../data/water-around-sand.png" },
         { glm::vec4(120.f / 255.f, 135.f / 255.f, 124.f / 255.f, 1.f), glm::vec4(148.f / 255.f, 124.f / 255.f, 48.f / 255.f, 1.f), glm::vec4(39.f / 255.f, 112.f / 255.f, 125.f / 255.f, 0.2) },
         { 0.f , 0.05f, 0.f },
         { 0.f, 0.3f, 0.f },
