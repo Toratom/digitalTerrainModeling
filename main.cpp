@@ -47,6 +47,11 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
+//Pour mesurer les performances:
+#include "TinyTimer.h"
+using TinyTimer::Timer;
+using TinyTimer::PerformanceCounter;
+
 #define PI 3.141592
 
 #define PATCH_HEIGHT 32
@@ -1197,6 +1202,7 @@ void render() {
     mesh->render();
 }
 
+
 int main(int argc, char ** argv) {
     init(); // Your initialization code (user interface, OpenGL states, scene with geometry, material, lights, etc)
     
@@ -1204,10 +1210,22 @@ int main(int argc, char ** argv) {
     GLuint swapBuffT = 0;
     GLuint swapBuffF = 0;
     GLuint swapBuffS = 0;
+    //Definition pour les mesures de performance
+    Timer timer;
+
+    PerformanceCounter thermalErosionTime;
+    PerformanceCounter hydraulicErosionATime;
+    PerformanceCounter hydraulicErosionBTime;
+    PerformanceCounter computeForRenderingTime;
+    PerformanceCounter renderingTime;
+
+
     while(!glfwWindowShouldClose(g_window)) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Erase the color and z buffers.
 
         if (g_goThermal) {
+            timer.reset();
+
             //Phase de calculs :
             glUseProgram(g_computeProgram);
             //Bind les buffer du compute shader :
@@ -1221,10 +1239,14 @@ int main(int argc, char ** argv) {
             swapBuffT = g_gridLayersHeightVboR;
             g_gridLayersHeightVboR = g_gridLayersHeightVboW;
             g_gridLayersHeightVboW = swapBuffT;
+
+            thermalErosionTime.add_sample(timer);
         }
 
         if (g_goHydraulic) {
             //Etape A
+            timer.reset();
+
             //Phase de calculs :
             glUseProgram(g_computeProgramHydraulicA);
             //Bind les buffer du compute shader :
@@ -1247,7 +1269,11 @@ int main(int argc, char ** argv) {
             g_waterFlowsVboR = g_waterFlowsVboW;
             g_waterFlowsVboW = swapBuffF;
 
+            hydraulicErosionATime.add_sample(timer);
+
             //Etape B:
+            timer.reset();
+
             glUseProgram(g_computeProgramHydraulicB);
             //Bind les buffer du compute shader :
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, g_waterSedimentVboR);
@@ -1262,10 +1288,14 @@ int main(int argc, char ** argv) {
             swapBuffS = g_waterSedimentVboR;
             g_waterSedimentVboR = g_waterSedimentVboW;
             g_waterSedimentVboW = swapBuffS;
+
+            hydraulicErosionBTime.add_sample(timer);
         }
 
 
         //Phase de rendering du terrain:
+        timer.reset();
+
         //Update avant render (normales et hauteur)
         glUseProgram(g_computeForRendering);
         loc = glGetUniformLocation(g_computeForRendering, "renderWater");
@@ -1278,6 +1308,12 @@ int main(int argc, char ** argv) {
         //Appelle au compute shader
         glDispatchCompute(g_nbGroupsX, g_nbGroupsY, 1); //Dimension 2D de l'espace d'invocation x correspond à i et y à j
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+        computeForRenderingTime.add_sample(timer);
+
+
+        //Rendering
+        timer.reset();
 
         glUseProgram(g_program);
         render();
@@ -1310,11 +1346,20 @@ int main(int argc, char ** argv) {
         glfwSwapBuffers(g_window);
         glfwPollEvents();
 
+        renderingTime.add_sample(timer);
+
         //Sleep(500);
     }
 
     // Cleanup
     clear();
+
+    //Display performance
+    std::cout << "Thermal Erosion took " << thermalErosionTime.average() << " +- " << thermalErosionTime.stddev() << " seconds" << std::endl;
+    std::cout << "Hydraulic Erosion A took " << hydraulicErosionATime.average() << " +- " << hydraulicErosionATime.stddev() << " seconds" << std::endl;
+    std::cout << "Hydraulic Erosion B took " << hydraulicErosionBTime.average() << " +- " << hydraulicErosionBTime.stddev() << " seconds" << std::endl;
+    std::cout << "Compute For Rendering took " << computeForRenderingTime.average() << " +- " << computeForRenderingTime.stddev() << " seconds" << std::endl;
+    std::cout << "Rendering took " << renderingTime.average() << " +- " << renderingTime.stddev() << " seconds" << std::endl;
     return EXIT_SUCCESS;
 }
 
