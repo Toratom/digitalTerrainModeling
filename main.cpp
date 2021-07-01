@@ -49,8 +49,6 @@
 
 //Pour mesurer les performances:
 #include "TinyTimer.h"
-using TinyTimer::Timer;
-using TinyTimer::PerformanceCounter;
 
 #define PI 3.141592
 
@@ -1211,13 +1209,13 @@ int main(int argc, char ** argv) {
     GLuint swapBuffF = 0;
     GLuint swapBuffS = 0;
     //Definition pour les mesures de performance
-    Timer timer;
+    TinyTimer::TimerGPU timer;
 
-    PerformanceCounter thermalErosionTime;
-    PerformanceCounter hydraulicErosionATime;
-    PerformanceCounter hydraulicErosionBTime;
-    PerformanceCounter computeForRenderingTime;
-    PerformanceCounter renderingTime;
+    TinyTimer::PerformanceCounter thermalErosionTime;
+    TinyTimer::PerformanceCounter hydraulicErosionATime;
+    TinyTimer::PerformanceCounter hydraulicErosionBTime;
+    TinyTimer::PerformanceCounter computeForRenderingTime;
+    TinyTimer::PerformanceCounter renderingTime;
 
 
     while(!glfwWindowShouldClose(g_window)) {
@@ -1240,7 +1238,7 @@ int main(int argc, char ** argv) {
             g_gridLayersHeightVboR = g_gridLayersHeightVboW;
             g_gridLayersHeightVboW = swapBuffT;
 
-            thermalErosionTime.add_sample(timer);
+            thermalErosionTime.add_sample(timer.ellapsed());
         }
 
         if (g_goHydraulic) {
@@ -1269,7 +1267,7 @@ int main(int argc, char ** argv) {
             g_waterFlowsVboR = g_waterFlowsVboW;
             g_waterFlowsVboW = swapBuffF;
 
-            hydraulicErosionATime.add_sample(timer);
+            hydraulicErosionATime.add_sample(timer.ellapsed());
 
             //Etape B:
             timer.reset();
@@ -1289,7 +1287,7 @@ int main(int argc, char ** argv) {
             g_waterSedimentVboR = g_waterSedimentVboW;
             g_waterSedimentVboW = swapBuffS;
 
-            hydraulicErosionBTime.add_sample(timer);
+            hydraulicErosionBTime.add_sample(timer.ellapsed());
         }
 
 
@@ -1309,7 +1307,7 @@ int main(int argc, char ** argv) {
         glDispatchCompute(g_nbGroupsX, g_nbGroupsY, 1); //Dimension 2D de l'espace d'invocation x correspond à i et y à j
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
-        computeForRenderingTime.add_sample(timer);
+        computeForRenderingTime.add_sample(timer.ellapsed());
 
 
         //Rendering
@@ -1346,20 +1344,21 @@ int main(int argc, char ** argv) {
         glfwSwapBuffers(g_window);
         glfwPollEvents();
 
-        renderingTime.add_sample(timer);
+        renderingTime.add_sample(timer.ellapsed());
 
         //Sleep(500);
     }
 
     // Cleanup
+    timer.quit();
     clear();
 
     //Display performance
-    std::cout << "Thermal Erosion took " << thermalErosionTime.average() << " +- " << thermalErosionTime.stddev() << " seconds" << std::endl;
-    std::cout << "Hydraulic Erosion A took " << hydraulicErosionATime.average() << " +- " << hydraulicErosionATime.stddev() << " seconds" << std::endl;
-    std::cout << "Hydraulic Erosion B took " << hydraulicErosionBTime.average() << " +- " << hydraulicErosionBTime.stddev() << " seconds" << std::endl;
-    std::cout << "Compute For Rendering took " << computeForRenderingTime.average() << " +- " << computeForRenderingTime.stddev() << " seconds" << std::endl;
-    std::cout << "Rendering took " << renderingTime.average() << " +- " << renderingTime.stddev() << " seconds" << std::endl;
+    std::cout << "Thermal Erosion took " << thermalErosionTime.summary() << std::endl;
+    std::cout << "Hydraulic Erosion A took " << hydraulicErosionATime.summary() << std::endl;
+    std::cout << "Hydraulic Erosion B took " << hydraulicErosionBTime.summary() << std::endl;
+    std::cout << "Compute For Rendering took " << computeForRenderingTime.summary() << std::endl;
+    std::cout << "Rendering took " << renderingTime.summary() << std::endl;
     return EXIT_SUCCESS;
 }
 

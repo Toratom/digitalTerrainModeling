@@ -98,6 +98,47 @@ private:
     ::std::chrono::time_point<::std::chrono::high_resolution_clock> begin;
 };
 
+
+
+class TimerGPU
+{
+public:
+    
+    TimerGPU() noexcept {
+        glGenQueries(1, &timeQuery);
+    }
+
+    void quit() noexcept {
+        glDeleteQueries(1, &timeQuery);
+    }
+
+    void reset() noexcept {
+        glBeginQuery(GL_TIME_ELAPSED, timeQuery);
+    }
+
+    /**
+     * Ellapsed time since last call to reset(), in nanoseconds
+     */
+    GLint64 ellapsedNanoseconds() const noexcept {
+        glEndQuery(GL_TIME_ELAPSED);
+        GLint64 elapsed = 0;
+        glGetQueryObjecti64v(timeQuery, GL_QUERY_RESULT, &elapsed);
+        return elapsed;
+    }
+
+    /**
+     * Ellapsed time since either construction or last call to reset(), in seconds
+     */
+    double ellapsed() const noexcept {
+        return ellapsedNanoseconds() * 1e-9;
+    }
+
+private:
+    GLuint timeQuery;
+};
+
+
+
 /**
  * Accumulate time measurements, providing standard deviation
  */
@@ -123,10 +164,6 @@ public:
         return sqrt(max(0.0, var));
     }
 
-    void add_sample(const Timer & timer) noexcept {
-        add_sample(timer.ellapsed());
-    }
-
     /**
      * Add a sample measure, in seconds
      */
@@ -139,7 +176,7 @@ public:
     ::std::string summary() const noexcept {
         ::std::ostringstream ss;
         ss << average() * 1e3 << "ms";
-        ss << " (±" << stddev() * 1e3 << "ms,";
+        ss << " (+- " << stddev() * 1e3 << "ms,";
         ss << " " << m_sample_count << " samples)";
         return ss.str();
     }
