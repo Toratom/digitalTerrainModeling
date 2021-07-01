@@ -150,8 +150,9 @@ void main() {
 				}
 
 				//Calcule du coeff de normalisation K, pour eviter de perdre plus de matiere que la colonne courante du layer
-				 K = 1.; //Pour eviter des divisions qui explose, on met K à 0 si outFlowTot tres faible, pb peut etre a l'origine de point qui ne pert pas lors eau malgre pic
-				 if (flowOutTot > 0.0001) K = min(1., ThicknessR[getIndex(currentIJ.x, currentIJ.y)][indexOfWater] * A / (flowOutTot * dt));
+				 K = 0.;
+				 if (ThicknessR[getIndex(currentIJ.x, currentIJ.y)][indexOfWater] > 0) K = min(1., ThicknessR[getIndex(currentIJ.x, currentIJ.y)][indexOfWater] * A / (flowOutTot * dt));
+				 //Si pas d'eau K à 0 OK
 
 				//Applique normalisation
 				for (uint k = 0; k < 4; k += 1) {
@@ -184,7 +185,7 @@ void main() {
 		//La hauteur de l'eau update
 		float d1 = ThicknessR[getIndex(pointIJ.x, pointIJ.y)][indexOfWater];
 		float d2 = d1 + (volumeInTot - volumeOutTot) / A;
-		if (d2 < 0.0001) d2 = 0.; //Bonne idee ?
+		//if (d2 < 0.00001) d2 = 0.; //Bonne idee ?
 		float dMean = (d2 + d1) / 2.;
 		//Vitesse de l'eau dans la direction de i, X = u
 		float deltaWI = (flowOut[currentXY.x - 1][currentXY.y][3] - flowOut[currentXY.x][currentXY.y][0] + flowOut[currentXY.x][currentXY.y][3] - flowOut[currentXY.x + 1][currentXY.y][0]) / 2.;

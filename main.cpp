@@ -94,8 +94,8 @@ GLuint g_ibo = 0;
 int g_displayWater = true;
 int g_displayVel = false;
 int g_displaySed = false;
-int g_goThermal = false;
-int g_goHydraulic = false;
+int g_goThermal = true;
+int g_goHydraulic = true;
 
 //Debug
 float* points;
@@ -1163,7 +1163,7 @@ void init() {
     //    glm::vec4(-5.f, -5.f, 5.f, 5.f), glm::vec2(0.f, 2.f)); //cpu
     //{ "../data/simpleB.png", "../data/sand-with-water.png", "../data/water-around-sand.png" }
     //{ "../data/simpleB.png", "../data/picSand.png", "../data/thinPlane.png" }
-    mesh = new Mesh({ "../data/simpleB.png", "../data/sand-with-waterB.png", "../data/water-around-sand.png" },
+    mesh = new Mesh({ "../data/simpleB.png", "../data/sand-with-water.png", "../data/water-around-sand.png" },
         { glm::vec4(120.f / 255.f, 135.f / 255.f, 124.f / 255.f, 1.f), glm::vec4(148.f / 255.f, 124.f / 255.f, 48.f / 255.f, 1.f), glm::vec4(39.f / 255.f, 112.f / 255.f, 125.f / 255.f, 0.2) },
         { 0.f , 0.05f, 0.f },
         { 0.f, 0.3f, 0.f },
@@ -1212,10 +1212,11 @@ int main(int argc, char ** argv) {
     TinyTimer::TimerGPU timer;
 
     TinyTimer::PerformanceCounter thermalErosionTime;
-    TinyTimer::PerformanceCounter hydraulicErosionATime;
-    TinyTimer::PerformanceCounter hydraulicErosionBTime;
-    TinyTimer::PerformanceCounter computeForRenderingTime;
-    TinyTimer::PerformanceCounter renderingTime;
+    TinyTimer::PerformanceCounter hydraulicErosionTime;
+    TinyTimer::PerformanceCounter computeForRenderingTerrainTime;
+    TinyTimer::PerformanceCounter computeForRenderingWaterTime;
+    TinyTimer::PerformanceCounter renderingTerrainTime;
+    TinyTimer::PerformanceCounter renderingWaterTime;
 
 
     while(!glfwWindowShouldClose(g_window)) {
@@ -1242,9 +1243,9 @@ int main(int argc, char ** argv) {
         }
 
         if (g_goHydraulic) {
-            //Etape A
             timer.reset();
 
+            //Etape A
             //Phase de calculs :
             glUseProgram(g_computeProgramHydraulicA);
             //Bind les buffer du compute shader :
@@ -1267,11 +1268,8 @@ int main(int argc, char ** argv) {
             g_waterFlowsVboR = g_waterFlowsVboW;
             g_waterFlowsVboW = swapBuffF;
 
-            hydraulicErosionATime.add_sample(timer.ellapsed());
 
             //Etape B:
-            timer.reset();
-
             glUseProgram(g_computeProgramHydraulicB);
             //Bind les buffer du compute shader :
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, g_waterSedimentVboR);
@@ -1287,7 +1285,7 @@ int main(int argc, char ** argv) {
             g_waterSedimentVboR = g_waterSedimentVboW;
             g_waterSedimentVboW = swapBuffS;
 
-            hydraulicErosionBTime.add_sample(timer.ellapsed());
+            hydraulicErosionTime.add_sample(timer.ellapsed());
         }
 
 
@@ -1307,16 +1305,18 @@ int main(int argc, char ** argv) {
         glDispatchCompute(g_nbGroupsX, g_nbGroupsY, 1); //Dimension 2D de l'espace d'invocation x correspond à i et y à j
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
-        computeForRenderingTime.add_sample(timer.ellapsed());
+        computeForRenderingTerrainTime.add_sample(timer.ellapsed());
 
 
         //Rendering
         timer.reset();
-
         glUseProgram(g_program);
         render();
+        renderingTerrainTime.add_sample(timer.ellapsed());
 
         if (g_displayWater) {
+            timer.reset();
+
             ////Phase de rendering de l'eau:
             ////Update avant render (normales et hauteur)
             glUseProgram(g_computeForRendering);
@@ -1333,8 +1333,12 @@ int main(int argc, char ** argv) {
             glDispatchCompute(g_nbGroupsX, g_nbGroupsY, 1); //Dimension 2D de l'espace d'invocation x correspond à i et y à j
             glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
+            computeForRenderingWaterTime.add_sample(timer.ellapsed());
+
+            timer.reset();
             glUseProgram(g_program);
             render();
+            renderingWaterTime.add_sample(timer.ellapsed());
         }
 
         //Render Imgui
@@ -1343,8 +1347,6 @@ int main(int argc, char ** argv) {
 
         glfwSwapBuffers(g_window);
         glfwPollEvents();
-
-        renderingTime.add_sample(timer.ellapsed());
 
         //Sleep(500);
     }
@@ -1355,10 +1357,11 @@ int main(int argc, char ** argv) {
 
     //Display performance
     std::cout << "Thermal Erosion took " << thermalErosionTime.summary() << std::endl;
-    std::cout << "Hydraulic Erosion A took " << hydraulicErosionATime.summary() << std::endl;
-    std::cout << "Hydraulic Erosion B took " << hydraulicErosionBTime.summary() << std::endl;
-    std::cout << "Compute For Rendering took " << computeForRenderingTime.summary() << std::endl;
-    std::cout << "Rendering took " << renderingTime.summary() << std::endl;
+    std::cout << "Hydraulic Erosion " << hydraulicErosionTime.summary() << std::endl;
+    std::cout << "Compute For Rendering Terrain took " << computeForRenderingTerrainTime.summary() << std::endl;
+    std::cout << "Compute For Rendering Water took " << computeForRenderingWaterTime.summary() << std::endl;
+    std::cout << "Rendering Terrain took " << renderingTerrainTime.summary() << std::endl;
+    std::cout << "Rendering Water took " << renderingWaterTime.summary() << std::endl;
     return EXIT_SUCCESS;
 }
 
