@@ -62,8 +62,9 @@ unsigned int g_nbGroupsY = 0;
 GLFWwindow *g_window = nullptr;
 int g_windowWidth = 1024;
 int g_windowHeight = 768;
-
-GLFWwindow* g_window2 = nullptr;
+int g_fboWidth = 2000;
+int g_fboHeight = 2000;
+GLfloat g_clearColorFbo[] = {-1.f, -1.f, 0.f, 1.f};
 
 //Simulation parameters
 float g_dt = 0.005; //0.0005
@@ -71,16 +72,18 @@ float g_dt = 0.005; //0.0005
 
 //GPU objects - Program
 GLuint g_program = 0; // A GPU program contains at least a vertex shader and a fragment shader
+GLuint g_gridScreenPositionProgram = 0; //Le programme pour le rendu qui indique position de la grille
 GLuint g_computeProgram = 0; //GPU program for compute shader
 GLuint g_computeProgramHydraulicA = 0;
 GLuint g_computeProgramHydraulicB = 0;
 GLuint g_computeForRendering = 0;
 //GPU objects - Buffers
 //GLuint g_colVbo = 0;
-GLuint g_gridPosVbo = 0; //Un vbo qui donne le z (i) et x (j) des points de la grille
+GLuint g_gridCoordsVbo = 0; //Un vbo qui donne le z (i) et x (j) des points de la grille
 GLuint g_gridNormalsVbo = 0; //Normale au sol calculer par un compute shader
 GLuint g_gridHeightsVbo = 0; //Un vbo qui donne la hauteur du terrain en (i,j), car le vertex shader ne peut pas la calculer à partir des layers
 GLuint g_gridColorsVbo = 0;
+GLuint g_gridPosVbo = 0;
 GLuint g_gridLayersHeightVboR = 0; //b0(i,j), b1(i,j), ..., bNbOfLayers(i,j) ... Donne l'epaisseur des différents layers AU MAX 4 LAYERS (sans compter l'eau)
 GLuint g_gridLayersHeightVboW = 0; //R aura le role de t et W de t + dt (puis swap) : en pratique on lit dans celui pointé par R et on écrit dans celui pointé par W
 GLuint g_waterFlowsVboR = 0; //B (i - 1, j) , L (i, j - 1), R (i, j + 1), T (i + 1, j)
@@ -88,14 +91,15 @@ GLuint g_waterFlowsVboW = 0;
 GLuint g_waterVelocityVbo = 0; //En R et W : v (vitesse direction i), u (vitesse direction j)
 GLuint g_waterSedimentVboR = 0;
 GLuint g_waterSedimentVboW = 0;
-//... Cf article pour autre buffer necessaire
+GLuint g_gridScreenPositionFbo = 0;
+GLuint g_gridScreenPositionTex = 0;
 GLuint g_ibo = 0;
 //Variable pour l'interaction en int à cause de IMGUI
 int g_displayWater = true;
 int g_displayVel = false;
 int g_displaySed = false;
-int g_goThermal = true;
-int g_goHydraulic = true;
+int g_goThermal = false;
+int g_goHydraulic = false;
 
 //Debug
 float* points;
@@ -157,7 +161,8 @@ public:
     const std::vector<unsigned int>& getTriangleIndices() const;
     float getLayerThickness(unsigned int k, unsigned int i, unsigned int j) const;
     float getH(unsigned int i, unsigned int j) const;
-    glm::vec2 getGridPos(unsigned int i, unsigned int j) const;
+    glm::vec2 getGridCoord(unsigned int i, unsigned int j) const;
+    glm::uvec2 getGridPos(unsigned int i, unsigned int j) const;
     unsigned int getGridWidth() const;
     unsigned int getGridHeight() const;
     unsigned int getNbOfLayers() const;
@@ -180,7 +185,8 @@ private:
     std::vector<glm::vec4> m_layersColor;
     std::vector<float> m_layersErosionCoeffs;
     std::vector<float> m_layersThetaLimits;
-    std::vector<glm::vec2> m_gridPositions;
+    std::vector<glm::vec2> m_gridCoords;
+    std::vector<glm::uvec2> m_gridPositions;
     std::vector<unsigned int> m_triangleIndices;
     unsigned int m_vao;
 
@@ -263,7 +269,12 @@ void Mesh::setLayerThickness(float value, unsigned int k, unsigned int i, unsign
     m_layersThickness[k * m_gridHeight * m_gridWidth + i * m_gridWidth + j] = value;
 }
 
-glm::vec2 Mesh::getGridPos(unsigned int i, unsigned int j) const {
+glm::vec2 Mesh::getGridCoord(unsigned int i, unsigned int j) const {
+    //Return coordI, corrdJ donc Z puis X
+    return m_gridCoords[i * m_gridWidth + j];
+}
+
+glm::uvec2 Mesh::getGridPos(unsigned int i, unsigned int j) const {
     //Return posI, posJ donc Z puis X
     return m_gridPositions[i * m_gridWidth + j];
 }
@@ -277,7 +288,7 @@ void Mesh::render() {
     glBindVertexArray(m_vao);
     
     // bind the buffers
-    glBindBuffer(GL_ARRAY_BUFFER, g_gridPosVbo);
+    glBindBuffer(GL_ARRAY_BUFFER, g_gridCoordsVbo);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), (void*) 0);
 
@@ -292,6 +303,10 @@ void Mesh::render() {
     glBindBuffer(GL_ARRAY_BUFFER, g_gridColorsVbo);
     glEnableVertexAttribArray(3);
     glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), 0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, g_gridPosVbo);
+    glEnableVertexAttribArray(4);
+    glVertexAttribPointer(4, 2, GL_UNSIGNED_INT, GL_FALSE, 2 * sizeof(GLuint), 0);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_ibo);
 
@@ -380,6 +395,7 @@ Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec
             std::cout << m_cellHeight << " " << m_cellWidth << std::endl;
 
             m_layersThickness.resize(m_nbOfLayers * m_gridWidth * m_gridHeight);
+            m_gridCoords.resize(m_gridWidth * m_gridHeight);
             m_gridPositions.resize(m_gridWidth * m_gridHeight);
 
             for (int i = 0; i < m_gridWidth * m_gridHeight - m_gridWidth; i++) {
@@ -396,7 +412,8 @@ Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec
             unsigned int ind = 0;
             for (int i = 0; i < m_gridHeight; i++) {
                 for (int j = 0; j < m_gridWidth; j++) {
-                    m_gridPositions[ind] = glm::vec2((az + (bz - az) * i / (m_gridWidth - 1)), (ax + (bx - ax) * j / (m_gridHeight - 1))); //i puis j donc z puis x
+                    m_gridCoords[ind] = glm::vec2((az + (bz - az) * i / (m_gridWidth - 1)), (ax + (bx - ax) * j / (m_gridHeight - 1))); //i puis j donc z puis x
+                    m_gridPositions[ind] = glm::uvec2(i, j);
                     ind += 1;
                 }
             }
@@ -470,6 +487,8 @@ void printHelp()
 
 // Executed each time the window is resized. Adjust the aspect ratio and the rendering viewport to the current window.
 void windowSizeCallback(GLFWwindow* window, int width, int height) {
+    g_windowWidth = width;
+    g_windowHeight = height;
     g_camera.setAspectRatio(static_cast<float>(width)/static_cast<float>(height));
     glViewport(0, 0, (GLint)width, (GLint)height); // Dimension of the rendering region in the window
 }
@@ -758,6 +777,25 @@ void initGPUprograms() {
     }
     CheckGlErrors("Shader Program 2");
 
+    g_gridScreenPositionProgram = glCreateProgram();
+    shaderSourceString = file2String("../gridScreenPosVertexShader.glsl"); // Loads the shader source from a file to a C++ string
+    loadShader(g_gridScreenPositionProgram, GL_VERTEX_SHADER, shaderSourceString, "Grid Screen Pos Vertex Shader");
+    shaderSourceString = file2String("../gridScreenPosFragmentShader.glsl");
+    loadShader(g_gridScreenPositionProgram, GL_FRAGMENT_SHADER, shaderSourceString, "Grid Screen Pos Fragment Shader");
+    glLinkProgram(g_gridScreenPositionProgram); // The main GPU program is ready to be handle streams of polygons
+    CheckGlErrors("Grid Screen Pos Shader Program 1");
+    glGetProgramiv(g_gridScreenPositionProgram, GL_LINK_STATUS, &status);
+    if (status == GL_FALSE)
+    {
+        std::cout << "Link failed Grid Screen Pos Shader Program " << std::endl;
+        glGetProgramiv(g_gridScreenPositionProgram, GL_INFO_LOG_LENGTH, &logLength);
+        GLchar* log = new GLchar[logLength];
+        glGetProgramInfoLog(g_gridScreenPositionProgram, logLength, NULL, log);
+        std::cout << "Log (len) " << logLength << " : " << log << std::endl;
+        delete[] log;
+        exit(1);
+    }
+    CheckGlErrors("Grid Screen Pos Shader Program 2");
 
     //Programm for compute shader
     g_computeProgram = glCreateProgram();
@@ -854,8 +892,16 @@ void initGPUprograms() {
 
 void initBuffersAndUniforms() {
     //Uniforms
+    glUseProgram(g_gridScreenPositionProgram); //Il faut "bind" le program afin de pouvoir set des variables uniforme avec glUniform...
+    GLint loc = glGetUniformLocation(g_gridScreenPositionProgram, "gridHeight");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM gridHeight Grid Screen P" << std::endl;
+    glUniform1i(loc, mesh->getGridHeight());
+    loc = glGetUniformLocation(g_gridScreenPositionProgram, "gridWidth");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM gridWidth Grid Screen P" << std::endl;
+    glUniform1i(loc, mesh->getGridWidth());
+
     glUseProgram(g_computeProgram); //Il faut "bind" le program afin de pouvoir set des variables uniforme avec glUniform...
-    GLint loc = glGetUniformLocation(g_computeProgram, "gridHeight");
+    loc = glGetUniformLocation(g_computeProgram, "gridHeight");
     if (loc == -1) std::cout << "ERROR WITH UNIFORM gridHeight CP" << std::endl;
     glUniform1i(loc, mesh->getGridHeight());
     loc = glGetUniformLocation(g_computeProgram, "gridWidth");
@@ -946,17 +992,29 @@ void initBuffersAndUniforms() {
 
 
     //Buffers :
-    std::vector<float> gridPosTmp;
+    std::vector<float> gridCoordsTmp;
+    for (unsigned int i = 0; i < mesh->getGridHeight(); i += 1) {
+        for (unsigned int j = 0; j < mesh->getGridWidth(); j += 1) {
+            gridCoordsTmp.push_back(mesh->getGridCoord(i, j).x);
+            gridCoordsTmp.push_back(mesh->getGridCoord(i, j).y);
+        }
+    }
+    size_t vertexBufferSize = sizeof(float) * gridCoordsTmp.size();
+    glCreateBuffers(1, &g_gridCoordsVbo);
+    glBindBuffer(GL_ARRAY_BUFFER, g_gridCoordsVbo);
+    glBufferStorage(GL_ARRAY_BUFFER, vertexBufferSize, gridCoordsTmp.data(), 0); //Le flag plutot 0 que GL_DYNAMIC_STORAGE_BIT ?
+
+    std::vector<unsigned int> gridPosTmp;
     for (unsigned int i = 0; i < mesh->getGridHeight(); i += 1) {
         for (unsigned int j = 0; j < mesh->getGridWidth(); j += 1) {
             gridPosTmp.push_back(mesh->getGridPos(i, j).x);
             gridPosTmp.push_back(mesh->getGridPos(i, j).y);
         }
     }
-    size_t vertexBufferSize = sizeof(float) * gridPosTmp.size();
+    vertexBufferSize = sizeof(unsigned int) * gridPosTmp.size();
     glCreateBuffers(1, &g_gridPosVbo);
     glBindBuffer(GL_ARRAY_BUFFER, g_gridPosVbo);
-    glBufferStorage(GL_ARRAY_BUFFER, vertexBufferSize, gridPosTmp.data(), 0); //Le flag plutot 0 que GL_DYNAMIC_STORAGE_BIT ?
+    glBufferStorage(GL_ARRAY_BUFFER, vertexBufferSize, gridPosTmp.data(), 0);
 
     std::vector<float> terrainPropsTmp;
     for (unsigned int i = 0; i < mesh->getGridHeight(); i += 1) {
@@ -1152,9 +1210,49 @@ void initImGui() {
     std::cout << "---INIT IMGUI DONE---" << std::endl;
 }
 
+bool initFBO(unsigned int fboWidth, unsigned int fboHeight) {
+    glGenFramebuffers(1, &g_gridScreenPositionFbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, g_gridScreenPositionFbo);
+
+    //Texture storing at each pixel the (i,j) of the corresponding displayed point of the grid / terrain.
+    //Convention (-1, -1) pour le vide, ici hors de la grille
+    glGenTextures(1, &g_gridScreenPositionTex);
+    glBindTexture(GL_TEXTURE_2D, g_gridScreenPositionTex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, fboWidth, fboHeight, 0, GL_RG, GL_FLOAT, 0); //Float 16 ou 32 ?
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    //Attache la texture au FBO, dans l'emplacemennt utilise pour le rendu des couleurs
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g_gridScreenPositionTex, 0);
+
+    //Creation d'un renderBuffer pour la depth map pour que le rendu se passe bien
+    GLuint rbo;
+    glGenRenderbuffers(1, &rbo);
+    glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, fboWidth, fboHeight);
+    glBindRenderbuffer(GL_RENDERBUFFER, 0);
+
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE) {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        std::cout << "---INIT FBO DONE---" << std::endl;
+        return true;
+    }
+    else {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        return false;
+    }
+}
+
 void init() {
     initGLFW();
     initOpenGL();
+    if (!initFBO(g_fboWidth, g_fboHeight)) {
+        std::cout << "ERROR during FBO init" << std::endl;
+        exit(1);
+    }
 
     //mesh = new Mesh({ "../data/bedrock.png", "../data/sand.png", "../data/bedrock2.png" }, 
     //    { glm::vec4(120.f / 255.f, 135.f / 255.f, 124.f / 255.f, 1.f), glm::vec4(148.f / 255.f, 124.f / 255.f, 48.f / 255.f, 1.f), glm::vec4(20.f / 255.f, 107.f / 255.f, 150.f / 255.f, 0.5f) },
@@ -1309,8 +1407,20 @@ int main(int argc, char ** argv) {
 
 
         //Rendering
+        //Render dans le FBO la position (normalise) de chaque point de la grille affiche
+        glUseProgram(g_gridScreenPositionProgram);
+        glViewport(0, 0, g_fboWidth, g_fboHeight); //Car taille du fbo differente de celle de l'ecran
+        glBindFramebuffer(GL_FRAMEBUFFER, g_gridScreenPositionFbo);
+        //Clear le color buffer et le depth buffer attention le premier etant en float on ne peut pas utiliser glClearColor et glClear...
+        glClear(GL_DEPTH_BUFFER_BIT);
+        glClearBufferfv(GL_COLOR, 0, g_clearColorFbo);
+        render();
+
+        //Render sur l'ecran
         timer.reset();
         glUseProgram(g_program);
+        glViewport(0, 0, g_windowWidth, g_windowHeight); //Car taille du fbo differente de celle de l'ecran
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
         render();
         renderingTerrainTime.add_sample(timer.ellapsed());
 
