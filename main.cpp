@@ -69,7 +69,6 @@ GLfloat g_clearColorFbo[] = {-1.f, -1.f, 0.f, 1.f};
 //Simulation parameters
 float g_dt = 0.005; //0.0005
 
-
 //GPU objects - Program
 GLuint g_program = 0; // A GPU program contains at least a vertex shader and a fragment shader
 GLuint g_gridScreenPositionProgram = 0; //Le programme pour le rendu qui indique position de la grille
@@ -100,6 +99,10 @@ int g_displayVel = false;
 int g_displaySed = false;
 int g_goThermal = false;
 int g_goHydraulic = false;
+
+glm::vec2 g_cursorPos; //Position du cursor sur l'écran normalisé à update avec callback puis à transmettre au shader avant le render
+bool g_editionModeOn = false;
+
 
 //Debug
 float* points;
@@ -170,7 +173,7 @@ public:
     std::vector<float> getLayersColor() const; //Attention renvoie un tableau de float, il faut le lire par groupe de 3 pour avoir les couleurs
     std::vector<float> getLayersErosionCoeffs() const;
     std::vector<float> getLayersThetaLimit() const;
-    void render();
+    void render(GLuint renderingProgram);
 
 private:
     unsigned int m_gridWidth = 0; //Nb de colonnes de la grille de discretisation (image)
@@ -272,11 +275,11 @@ glm::vec2 Mesh::getGridCoord(unsigned int i, unsigned int j) const {
     return m_gridCoords[i * m_gridWidth + j];
 }
 
-void Mesh::render() {
+void Mesh::render(GLuint renderingProgram) {
     glm::mat4 model = glm::mat4(1.f); //matrice modele
 
     //On donne la matrice du modèle au vertex shader et les couleurs au fragment shader
-    glUniformMatrix4fv(glGetUniformLocation(g_program, "modelMat"), 1, GL_FALSE, glm::value_ptr(model)); 
+    glUniformMatrix4fv(glGetUniformLocation(renderingProgram, "modelMat"), 1, GL_FALSE, glm::value_ptr(model));
 
     glBindVertexArray(m_vao);
     
@@ -490,10 +493,14 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
     glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
     } else if(action == GLFW_PRESS && key == GLFW_KEY_F) {
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-    } else if(action == GLFW_PRESS && (key == GLFW_KEY_ESCAPE || key == GLFW_KEY_Q)) {
+    } else if(action == GLFW_PRESS && key == GLFW_KEY_ESCAPE) {
     glfwSetWindowShouldClose(window, true); // Closes the application if the escape key is pressed
     } else if (action == GLFW_PRESS && key == GLFW_KEY_H) {
         printHelp();
+    } else if (action == GLFW_PRESS && key == GLFW_KEY_E) {
+        g_editionModeOn = !g_editionModeOn;
+        if (g_editionModeOn) std::cout << "--- Edition Mode ON ---" << std::endl;
+        else std::cout << "--- Edition Mode OFF ---" << std::endl;
     }
 }
 
@@ -506,16 +513,20 @@ void cursorPosCallback(GLFWwindow* window, double xpos, double ypos)
     const float normalizer = static_cast<float>((width + height) / 2);
     const float dx = static_cast<float>((g_baseX - xpos) / normalizer);
     const float dy = static_cast<float>((ypos - g_baseY) / normalizer);
-    if (g_rotatingP) {
+    //La camera est fixe en modeEdition
+    if (g_rotatingP && !g_editionModeOn) {
         const glm::vec3 dRot(-dy * PI, dx * PI, 0.0);
         g_camera.setRotation(g_baseRot + dRot);
     }
-    else if (g_panningP) {
+    else if (g_panningP && !g_editionModeOn) {
         g_camera.setPosition(g_baseTrans + g_meshScale * glm::vec3(dx, dy, 0.0));
     }
-    else if (g_zoomingP) {
+    else if (g_zoomingP && !g_editionModeOn) {
         g_camera.setPosition(g_baseTrans + g_meshScale * glm::vec3(0.0, 0.0, dy));
     }
+
+    g_cursorPos.x = ypos / height;
+    g_cursorPos.y = xpos / width;
 }
 
 // Called each time a mouse button is pressed
@@ -883,13 +894,16 @@ void initGPUprograms() {
 
 void initBuffersAndUniforms() {
     //Uniforms
-    glUseProgram(g_gridScreenPositionProgram); //Il faut "bind" le program afin de pouvoir set des variables uniforme avec glUniform...
-    GLint loc = glGetUniformLocation(g_gridScreenPositionProgram, "gridHeight");
-    if (loc == -1) std::cout << "ERROR WITH UNIFORM gridHeight Grid Screen P" << std::endl;
-    glUniform1i(loc, mesh->getGridHeight());
-    loc = glGetUniformLocation(g_gridScreenPositionProgram, "gridWidth");
-    if (loc == -1) std::cout << "ERROR WITH UNIFORM gridWidth Grid Screen P" << std::endl;
-    glUniform1i(loc, mesh->getGridWidth());
+    glUseProgram(g_program); //Il faut "bind" le program afin de pouvoir set des variables uniforme avec glUniform...
+    GLint loc = glGetUniformLocation(g_program, "gridScreenPosTex");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM gridScreenPosTex P" << std::endl;
+    glUniform1i(loc, 0); //Texture associe au l'unit 0
+    loc = glGetUniformLocation(g_program, "cursorPos");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM cursorPos P" << std::endl;
+    glUniform2f(loc, 0.f, 0.f); //Texture associe au l'unit 0
+    loc = glGetUniformLocation(g_program, "displayEdition");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM displayEdition P" << std::endl;
+    glUniform1i(loc, false);
 
     glUseProgram(g_computeProgram); //Il faut "bind" le program afin de pouvoir set des variables uniforme avec glUniform...
     loc = glGetUniformLocation(g_computeProgram, "gridHeight");
@@ -996,10 +1010,12 @@ void initBuffersAndUniforms() {
     glBufferStorage(GL_ARRAY_BUFFER, vertexBufferSize, gridCoordsTmp.data(), 0); //Le flag plutot 0 que GL_DYNAMIC_STORAGE_BIT ?
 
     std::vector<float> gridPosTmp; //On le met avec des float car plus simple pour la division dans le vertex shader
-    for (unsigned int i = 0; i < mesh->getGridHeight(); i += 1) {
-        for (unsigned int j = 0; j < mesh->getGridWidth(); j += 1) {
-            gridPosTmp.push_back(i);
-            gridPosTmp.push_back(j);
+    float gridHeight = mesh->getGridHeight();
+    float gridWidth = mesh->getGridWidth();
+    for (unsigned int i = 0; i < gridHeight; i += 1) {
+        for (unsigned int j = 0; j < gridWidth; j += 1) {
+            gridPosTmp.push_back(i / gridHeight);
+            gridPosTmp.push_back(j / gridWidth);
         }
     }
     vertexBufferSize = sizeof(float) * gridPosTmp.size();
@@ -1108,9 +1124,6 @@ void initCamera() {
     std::cout << "---INIT CAMERA DONE---" << std::endl;
 }
 
-void render();
-void clear();
-
 void renderImGui() {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
@@ -1208,11 +1221,12 @@ bool initFBO(unsigned int fboWidth, unsigned int fboHeight) {
     //Texture storing at each pixel the (i,j) of the corresponding displayed point of the grid / terrain.
     //Convention (-1, -1) pour le vide, ici hors de la grille
     glGenTextures(1, &g_gridScreenPositionTex);
+    glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, g_gridScreenPositionTex);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, fboWidth, fboHeight, 0, GL_RG, GL_FLOAT, 0); //Float 16 ou 32 ?
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glBindTexture(GL_TEXTURE_2D, 0);
+    //On laisse la texture bind car on va dessiner avec par la suite
 
     //Attache la texture au FBO, dans l'emplacemennt utilise pour le rendu des couleurs
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g_gridScreenPositionTex, 0);
@@ -1277,16 +1291,16 @@ void clear() {
 }
 
 // The main rendering call
-void render() {
+void render(GLuint renderingProgram) {
     const glm::mat4 viewMatrix = g_camera.computeViewMatrix();
     const glm::mat4 projMatrix = g_camera.computeProjectionMatrix();
     const glm::vec3 camPosition = g_camera.getPosition();
 
-    glUniformMatrix4fv(glGetUniformLocation(g_program, "viewMat"), 1, GL_FALSE, glm::value_ptr(viewMatrix)); // compute the view matrix of the camera and pass it to the GPU program
-    glUniformMatrix4fv(glGetUniformLocation(g_program, "projMat"), 1, GL_FALSE, glm::value_ptr(projMatrix)); // compute the projection matrix of the camera and pass it to the GPU program
-    glUniform3f(glGetUniformLocation(g_program, "camPos"), camPosition[0], camPosition[1], camPosition[2]);
+    glUniformMatrix4fv(glGetUniformLocation(renderingProgram, "viewMat"), 1, GL_FALSE, glm::value_ptr(viewMatrix)); // compute the view matrix of the camera and pass it to the GPU program
+    glUniformMatrix4fv(glGetUniformLocation(renderingProgram, "projMat"), 1, GL_FALSE, glm::value_ptr(projMatrix)); // compute the projection matrix of the camera and pass it to the GPU program
+    //glUniform3f(glGetUniformLocation(g_program, "camPos"), camPosition[0], camPosition[1], camPosition[2]);
 
-    mesh->render();
+    mesh->render(renderingProgram);
 }
 
 
@@ -1311,7 +1325,7 @@ int main(int argc, char ** argv) {
     while(!glfwWindowShouldClose(g_window)) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Erase the color and z buffers.
 
-        if (g_goThermal) {
+        if (g_goThermal && !g_editionModeOn) {
             timer.reset();
 
             //Phase de calculs :
@@ -1331,7 +1345,7 @@ int main(int argc, char ** argv) {
             thermalErosionTime.add_sample(timer.ellapsed());
         }
 
-        if (g_goHydraulic) {
+        if (g_goHydraulic && !g_editionModeOn) {
             timer.reset();
 
             //Etape A
@@ -1383,8 +1397,7 @@ int main(int argc, char ** argv) {
 
         //Update avant render (normales et hauteur)
         glUseProgram(g_computeForRendering);
-        loc = glGetUniformLocation(g_computeForRendering, "renderWater");
-        glUniform1i(loc, false);
+        glUniform1i(glGetUniformLocation(g_computeForRendering, "renderWater"), false);
         //Bind les buffer du compute shader :
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, g_gridLayersHeightVboR);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, g_gridNormalsVbo);
@@ -1399,21 +1412,22 @@ int main(int argc, char ** argv) {
 
         //Rendering
         //Render dans le FBO la position (normalise) de chaque point de la grille affiche
-        //glUseProgram(g_program);
         glUseProgram(g_gridScreenPositionProgram);
         glViewport(0, 0, g_fboWidth, g_fboHeight); //Car taille du fbo differente de celle de l'ecran
         glBindFramebuffer(GL_FRAMEBUFFER, g_gridScreenPositionFbo);
         //Clear le color buffer et le depth buffer attention le premier etant en float on ne peut pas utiliser glClearColor et glClear...
         glClear(GL_DEPTH_BUFFER_BIT);
         glClearBufferfv(GL_COLOR, 0, g_clearColorFbo);
-        render();
+        render(g_gridScreenPositionProgram);
 
         //Render sur l'ecran
         timer.reset();
         glUseProgram(g_program);
+        glUniform2f(glGetUniformLocation(g_program, "cursorPos"), g_cursorPos.x, g_cursorPos.y);
+        glUniform1i(glGetUniformLocation(g_program, "displayEdition"), g_editionModeOn); //Pourrait l'update en meme temps que le callback ? 
         glViewport(0, 0, g_windowWidth, g_windowHeight); //Car taille du fbo differente de celle de l'ecran
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        render();
+        render(g_program);
         renderingTerrainTime.add_sample(timer.ellapsed());
 
         if (g_displayWater) {
@@ -1422,8 +1436,7 @@ int main(int argc, char ** argv) {
             ////Phase de rendering de l'eau:
             ////Update avant render (normales et hauteur)
             glUseProgram(g_computeForRendering);
-            loc = glGetUniformLocation(g_computeForRendering, "renderWater");
-            glUniform1i(loc, true);
+            glUniform1i(glGetUniformLocation(g_computeForRendering, "renderWater"), true);
             //Bind les buffer du compute shader :
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, g_gridLayersHeightVboR);
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, g_gridNormalsVbo);
@@ -1439,7 +1452,8 @@ int main(int argc, char ** argv) {
 
             timer.reset();
             glUseProgram(g_program);
-            render();
+            glUniform1i(glGetUniformLocation(g_program, "displayEdition"), false);
+            render(g_program);
             renderingWaterTime.add_sample(timer.ellapsed());
         }
 
