@@ -162,7 +162,6 @@ public:
     float getLayerThickness(unsigned int k, unsigned int i, unsigned int j) const;
     float getH(unsigned int i, unsigned int j) const;
     glm::vec2 getGridCoord(unsigned int i, unsigned int j) const;
-    glm::uvec2 getGridPos(unsigned int i, unsigned int j) const;
     unsigned int getGridWidth() const;
     unsigned int getGridHeight() const;
     unsigned int getNbOfLayers() const;
@@ -186,7 +185,6 @@ private:
     std::vector<float> m_layersErosionCoeffs;
     std::vector<float> m_layersThetaLimits;
     std::vector<glm::vec2> m_gridCoords;
-    std::vector<glm::uvec2> m_gridPositions;
     std::vector<unsigned int> m_triangleIndices;
     unsigned int m_vao;
 
@@ -274,11 +272,6 @@ glm::vec2 Mesh::getGridCoord(unsigned int i, unsigned int j) const {
     return m_gridCoords[i * m_gridWidth + j];
 }
 
-glm::uvec2 Mesh::getGridPos(unsigned int i, unsigned int j) const {
-    //Return posI, posJ donc Z puis X
-    return m_gridPositions[i * m_gridWidth + j];
-}
-
 void Mesh::render() {
     glm::mat4 model = glm::mat4(1.f); //matrice modele
 
@@ -290,7 +283,7 @@ void Mesh::render() {
     // bind the buffers
     glBindBuffer(GL_ARRAY_BUFFER, g_gridCoordsVbo);
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), (void*) 0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), 0);
 
     glBindBuffer(GL_ARRAY_BUFFER, g_gridHeightsVbo);
     glEnableVertexAttribArray(1);
@@ -306,7 +299,7 @@ void Mesh::render() {
 
     glBindBuffer(GL_ARRAY_BUFFER, g_gridPosVbo);
     glEnableVertexAttribArray(4);
-    glVertexAttribPointer(4, 2, GL_UNSIGNED_INT, GL_FALSE, 2 * sizeof(GLuint), 0);
+    glVertexAttribPointer(4, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), 0);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_ibo);
 
@@ -396,7 +389,6 @@ Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec
 
             m_layersThickness.resize(m_nbOfLayers * m_gridWidth * m_gridHeight);
             m_gridCoords.resize(m_gridWidth * m_gridHeight);
-            m_gridPositions.resize(m_gridWidth * m_gridHeight);
 
             for (int i = 0; i < m_gridWidth * m_gridHeight - m_gridWidth; i++) {
                 if (i % m_gridWidth != m_gridWidth - 1) {
@@ -413,7 +405,6 @@ Mesh::Mesh(const std::vector<std::string>& filenames, const std::vector<glm::vec
             for (int i = 0; i < m_gridHeight; i++) {
                 for (int j = 0; j < m_gridWidth; j++) {
                     m_gridCoords[ind] = glm::vec2((az + (bz - az) * i / (m_gridWidth - 1)), (ax + (bx - ax) * j / (m_gridHeight - 1))); //i puis j donc z puis x
-                    m_gridPositions[ind] = glm::uvec2(i, j);
                     ind += 1;
                 }
             }
@@ -1004,14 +995,14 @@ void initBuffersAndUniforms() {
     glBindBuffer(GL_ARRAY_BUFFER, g_gridCoordsVbo);
     glBufferStorage(GL_ARRAY_BUFFER, vertexBufferSize, gridCoordsTmp.data(), 0); //Le flag plutot 0 que GL_DYNAMIC_STORAGE_BIT ?
 
-    std::vector<unsigned int> gridPosTmp;
+    std::vector<float> gridPosTmp; //On le met avec des float car plus simple pour la division dans le vertex shader
     for (unsigned int i = 0; i < mesh->getGridHeight(); i += 1) {
         for (unsigned int j = 0; j < mesh->getGridWidth(); j += 1) {
-            gridPosTmp.push_back(mesh->getGridPos(i, j).x);
-            gridPosTmp.push_back(mesh->getGridPos(i, j).y);
+            gridPosTmp.push_back(i);
+            gridPosTmp.push_back(j);
         }
     }
-    vertexBufferSize = sizeof(unsigned int) * gridPosTmp.size();
+    vertexBufferSize = sizeof(float) * gridPosTmp.size();
     glCreateBuffers(1, &g_gridPosVbo);
     glBindBuffer(GL_ARRAY_BUFFER, g_gridPosVbo);
     glBufferStorage(GL_ARRAY_BUFFER, vertexBufferSize, gridPosTmp.data(), 0);
@@ -1408,6 +1399,7 @@ int main(int argc, char ** argv) {
 
         //Rendering
         //Render dans le FBO la position (normalise) de chaque point de la grille affiche
+        //glUseProgram(g_program);
         glUseProgram(g_gridScreenPositionProgram);
         glViewport(0, 0, g_fboWidth, g_fboHeight); //Car taille du fbo differente de celle de l'ecran
         glBindFramebuffer(GL_FRAMEBUFFER, g_gridScreenPositionFbo);

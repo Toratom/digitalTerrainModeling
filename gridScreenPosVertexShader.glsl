@@ -4,7 +4,7 @@ layout(location = 0) in vec2 vGridCoords; //I, J donc Z, X
 layout(location = 1) in float vHeight;
 //layout(location = 2) in vec4 vNormal; //Pas besoin ici, mais laisse pour n'avoir qu'un seul vao ?
 //layout(location = 3) in vec4 vColor; //Pas besoin ici
-layout(location = 4) in uvec2 vGridPos; //Le (i,j), pas de probleme dans conversion en float lors de la division ?
+layout(location = 4) in vec2 vGridPos; //Le (i,j), en float pour eviter probleme lors de la division et lors des conversion
 
 out vec2 fColor;
 

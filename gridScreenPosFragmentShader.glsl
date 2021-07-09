@@ -2,9 +2,8 @@
 
 in vec2 fColor;
 
-out vec2 color;
+out vec4 color;
 
 void main() {
-	color = fColor;
-	//color = vec2(1,1);
+	color = vec4(fColor, 0.0, 1.0);
 }
