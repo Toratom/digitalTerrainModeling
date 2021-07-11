@@ -76,6 +76,7 @@ GLuint g_computeProgram = 0; //GPU program for compute shader
 GLuint g_computeProgramHydraulicA = 0;
 GLuint g_computeProgramHydraulicB = 0;
 GLuint g_computeForRendering = 0;
+GLuint g_userInteractionsProgram = 0;
 //GPU objects - Buffers
 //GLuint g_colVbo = 0;
 GLuint g_gridCoordsVbo = 0; //Un vbo qui donne le z (i) et x (j) des points de la grille
@@ -102,6 +103,8 @@ int g_goHydraulic = false;
 
 glm::vec2 g_cursorPos; //Position du cursor sur l'écran normalisé à update avec callback puis à transmettre au shader avant le render
 bool g_editionModeOn = false;
+bool g_addMaterial = false;
+bool g_removeMaterial = false;
 
 
 //Debug
@@ -529,6 +532,18 @@ void cursorPosCallback(GLFWwindow* window, double xpos, double ypos)
     g_cursorPos.y = xpos / width;
 }
 
+void setAddMaterial() {
+    glUseProgram(g_userInteractionsProgram);
+    glUniform1i(glGetUniformLocation(g_userInteractionsProgram, "addMaterial"), g_addMaterial);
+    glUseProgram(0);
+}
+
+void setRemoveMaterial() {
+    glUseProgram(g_userInteractionsProgram);
+    glUniform1i(glGetUniformLocation(g_userInteractionsProgram, "removeMaterial"), g_removeMaterial);
+    glUseProgram(0);
+}
+
 // Called each time a mouse button is pressed
 void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
 {
@@ -538,9 +553,15 @@ void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
             glfwGetCursorPos(window, &g_baseX, &g_baseY);
             g_baseRot = g_camera.getRotation();
         }
+        if (!g_addMaterial) {
+            g_addMaterial = true;
+            setAddMaterial();
+        }
     }
     else if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE) {
         g_rotatingP = false;
+        g_addMaterial = false;
+        setAddMaterial();
     }
     else if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
         if (!g_panningP) {
@@ -548,9 +569,15 @@ void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
             glfwGetCursorPos(window, &g_baseX, &g_baseY);
             g_baseTrans = g_camera.getPosition();
         }
+        if (!g_removeMaterial) {
+            g_removeMaterial = true;
+            setRemoveMaterial();
+        }
     }
     else if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_RELEASE) {
         g_panningP = false;
+        g_removeMaterial = false;
+        setRemoveMaterial();
     }
     else if (button == GLFW_MOUSE_BUTTON_MIDDLE && action == GLFW_PRESS) {
         if (!g_zoomingP) {
@@ -884,6 +911,27 @@ void initGPUprograms() {
     }
     CheckGlErrors("Compute for rendering Shader 2");
 
+    //Program pour gerer les interactions de l'utilisateur par exemple l'ajout et le retrait de matiere au clique droite ou gauche
+    g_userInteractionsProgram = glCreateProgram();
+    shaderSourceString = file2String("../computeShader/userInteractions.glsl");
+    //Ajout de l'entête
+    shaderSourceString = computeShaderHeader + shaderSourceString;
+    loadShader(g_userInteractionsProgram, GL_COMPUTE_SHADER, shaderSourceString, "Compute for user interactions");
+    glLinkProgram(g_userInteractionsProgram);
+    CheckGlErrors("Compute for user interactions Shader 1");
+    glGetProgramiv(g_userInteractionsProgram, GL_LINK_STATUS, &status);
+    if (status == GL_FALSE)
+    {
+        std::cout << "Link failed user interaction Shader" << std::endl;
+        glGetProgramiv(g_userInteractionsProgram, GL_INFO_LOG_LENGTH, &logLength);
+        GLchar* log = new GLchar[logLength];
+        glGetProgramInfoLog(g_userInteractionsProgram, logLength, NULL, log);
+        std::cout << "Log (len) " << logLength << " : " << log << std::endl;
+        delete[] log;
+        exit(1);
+    }
+    CheckGlErrors("Compute for user interactions Shader 2");
+
 
     //Calcul des dims de l'espace d'invocation
     g_nbGroupsX = (mesh->getGridHeight() + PATCH_HEIGHT - 1) / PATCH_HEIGHT;
@@ -991,6 +1039,27 @@ void initBuffersAndUniforms() {
     loc = glGetUniformLocation(g_computeForRendering, "displaySed");
     if (loc == -1) std::cout << "ERROR WITH UNIFORM displaySed R" << std::endl;
     glUniform1i(loc, g_displaySed);
+    glUseProgram(0);
+
+    glUseProgram(g_userInteractionsProgram); //Il faut "bind" le program afin de pouvoir set des variables uniforme avec glUniform...
+    loc = glGetUniformLocation(g_userInteractionsProgram, "gridHeight");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM gridHeight UI" << std::endl;
+    glUniform1f(loc, mesh->getGridHeight());
+    loc = glGetUniformLocation(g_userInteractionsProgram, "gridWidth");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM gridWidth UI" << std::endl;
+    glUniform1f(loc, mesh->getGridWidth());
+    loc = glGetUniformLocation(g_userInteractionsProgram, "gridScreenPosTex");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM gridScreenPosTex UI" << std::endl;
+    glUniform1i(loc, 0); //Texture associe au l'unit 0
+    loc = glGetUniformLocation(g_userInteractionsProgram, "cursorPos");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM cursorPos UI" << std::endl;
+    glUniform2f(loc, 0.f, 0.f); //Texture associe au l'unit 0
+    loc = glGetUniformLocation(g_userInteractionsProgram, "addMaterial");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM addMaterial UI" << std::endl;
+    glUniform1i(loc, false);
+    loc = glGetUniformLocation(g_userInteractionsProgram, "removeMaterial");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM removeMaterial UI" << std::endl;
+    glUniform1i(loc, false);
     glUseProgram(0);
 
     std::cout << "---INIT UNIFORMS DONE---" << std::endl;
@@ -1392,7 +1461,7 @@ int main(int argc, char ** argv) {
         }
 
 
-        //Phase de rendering du terrain:
+        //Phase de rendering du terrain et des interactions:
         timer.reset();
 
         //Update avant render (normales et hauteur)
@@ -1410,7 +1479,7 @@ int main(int argc, char ** argv) {
         computeForRenderingTerrainTime.add_sample(timer.ellapsed());
 
 
-        //Rendering
+        //Rendering et interaction
         //Render dans le FBO la position (normalise) de chaque point de la grille affiche
         glUseProgram(g_gridScreenPositionProgram);
         glViewport(0, 0, g_fboWidth, g_fboHeight); //Car taille du fbo differente de celle de l'ecran
@@ -1420,11 +1489,23 @@ int main(int argc, char ** argv) {
         glClearBufferfv(GL_COLOR, 0, g_clearColorFbo);
         render(g_gridScreenPositionProgram);
 
+        //Interaction
+        if (g_editionModeOn && (g_addMaterial || g_removeMaterial)) {
+            glUseProgram(g_userInteractionsProgram);
+            //Maj les uniformes qui change bcp c'est à dire pos du cursor les bool sont geres directement par les callbacks comme change que rarement
+            glUniform2f(glGetUniformLocation(g_userInteractionsProgram, "cursorPos"), g_cursorPos.x, g_cursorPos.y);
+            //Bind les buffer du compute shader :
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, g_gridLayersHeightVboR);
+            //Appelle au compute shader
+            glDispatchCompute(g_nbGroupsX, g_nbGroupsY, 1);
+            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+        }
+
         //Render sur l'ecran
         timer.reset();
         glUseProgram(g_program);
         glUniform2f(glGetUniformLocation(g_program, "cursorPos"), g_cursorPos.x, g_cursorPos.y);
-        glUniform1i(glGetUniformLocation(g_program, "displayEdition"), g_editionModeOn); //Pourrait l'update en meme temps que le callback ? 
+        glUniform1i(glGetUniformLocation(g_program, "displayEdition"), g_editionModeOn); //Pourrait l'update en meme temps que le callback ? OUI
         glViewport(0, 0, g_windowWidth, g_windowHeight); //Car taille du fbo differente de celle de l'ecran
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         render(g_program);
