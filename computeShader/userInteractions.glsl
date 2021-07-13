@@ -7,8 +7,7 @@ uniform vec2 cursorPos;
 uniform sampler2D gridScreenPosTex;
 uniform bool addMaterial;
 uniform bool removeMaterial;
-
-const int indexOfSand = NB_OF_LAYERS - 2;
+uniform int selectedLayerID;
 
 layout(local_size_x = PATCH_HEIGHT, local_size_y = PATCH_WIDTH, local_size_z = 1) in;
 
@@ -32,7 +31,7 @@ void main() {
 
 
 	if (iN < 1 && jN < 1) {
-		float newH = ThicknessR[getIndex(pointIJ.x, pointIJ.y)][indexOfSand];
+		float newH = ThicknessR[getIndex(pointIJ.x, pointIJ.y)][selectedLayerID];
 		vec2 cursorGridPos = texture(gridScreenPosTex, vec2(cursorPos.y, 1.0 - cursorPos.x)).xy;
 
 		if (cursorGridPos.x >= 0.0 && cursorGridPos.y >= 0.0) {
@@ -47,6 +46,6 @@ void main() {
 
 		}
 
-		ThicknessR[getIndex(pointIJ.x, pointIJ.y)][indexOfSand] = max(newH, 0.0);
+		ThicknessR[getIndex(pointIJ.x, pointIJ.y)][selectedLayerID] = max(newH, 0.0);
 	}
 }

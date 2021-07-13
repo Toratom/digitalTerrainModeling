@@ -100,6 +100,8 @@ int g_displayVel = false;
 int g_displaySed = false;
 int g_goThermal = false;
 int g_goHydraulic = false;
+int g_selectedLayer = NB_OF_LAYERS - 2;
+char* g_layersID[NB_OF_LAYERS];
 
 glm::vec2 g_cursorPos; //Position du cursor sur l'écran normalisé à update avec callback puis à transmettre au shader avant le render
 bool g_editionModeOn = false;
@@ -1060,7 +1062,11 @@ void initBuffersAndUniforms() {
     loc = glGetUniformLocation(g_userInteractionsProgram, "removeMaterial");
     if (loc == -1) std::cout << "ERROR WITH UNIFORM removeMaterial UI" << std::endl;
     glUniform1i(loc, false);
+    loc = glGetUniformLocation(g_userInteractionsProgram, "selectedLayerID");
+    if (loc == -1) std::cout << "ERROR WITH UNIFORM selectedLayerID UI" << std::endl;
+    glUniform1i(loc, g_selectedLayer);
     glUseProgram(0);
+
 
     std::cout << "---INIT UNIFORMS DONE---" << std::endl;
 
@@ -1256,6 +1262,15 @@ void renderImGui() {
         ImGui::TreePop();
     }
 
+    if (g_editionModeOn) {
+        ImGui::Spacing();
+        ImGui::Text("Edition Mode");
+
+        ImGui::Text("Selected Layer :");
+        ImGui::SameLine();
+        ImGui::ListBox("##Layers", &g_selectedLayer, g_layersID, NB_OF_LAYERS, 2); // ## no label
+    }
+
     ImGui::Separator();
 
     ImGui::Spacing();
@@ -1270,6 +1285,13 @@ void renderImGui() {
 }
 
 void initImGui() {
+    for (int i = 0; i < NB_OF_LAYERS; i += 1) {
+        char* charArray = (char *) malloc(sizeof(char) * 10);
+        snprintf(charArray, 10, "%s - %d", "Layer", i);
+
+        g_layersID[i] = charArray;
+    }
+ 
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -1494,10 +1516,24 @@ int main(int argc, char ** argv) {
             glUseProgram(g_userInteractionsProgram);
             //Maj les uniformes qui change bcp c'est à dire pos du cursor les bool sont geres directement par les callbacks comme change que rarement
             glUniform2f(glGetUniformLocation(g_userInteractionsProgram, "cursorPos"), g_cursorPos.x, g_cursorPos.y);
+            glUniform1i(glGetUniformLocation(g_userInteractionsProgram, "selectedLayerID"), g_selectedLayer);
             //Bind les buffer du compute shader :
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, g_gridLayersHeightVboR);
             //Appelle au compute shader
             glDispatchCompute(g_nbGroupsX, g_nbGroupsY, 1);
+            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+            //Comme on a modifier (possiblement car cela pourrait etre l'eau) le terrain il faut update le buffer g_gridHeightsVbo
+            //Sans cela, cela serait fait lors du render de l'eau et on verra donc le terrain calcule lors du rendering de l'eau... donc pas de tache rouge
+            glUseProgram(g_computeForRendering);
+            glUniform1i(glGetUniformLocation(g_computeForRendering, "renderWater"), false);
+            //Bind les buffer du compute shader :
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, g_gridLayersHeightVboR);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, g_gridNormalsVbo);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, g_gridHeightsVbo);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, g_gridColorsVbo);
+            //Appelle au compute shader
+            glDispatchCompute(g_nbGroupsX, g_nbGroupsY, 1); //Dimension 2D de l'espace d'invocation x correspond à i et y à j
             glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
         }
 
@@ -1505,7 +1541,7 @@ int main(int argc, char ** argv) {
         timer.reset();
         glUseProgram(g_program);
         glUniform2f(glGetUniformLocation(g_program, "cursorPos"), g_cursorPos.x, g_cursorPos.y);
-        glUniform1i(glGetUniformLocation(g_program, "displayEdition"), g_editionModeOn); //Pourrait l'update en meme temps que le callback ? OUI
+        glUniform1i(glGetUniformLocation(g_program, "displayEdition"), g_editionModeOn); //Pourrait l'update en meme temps que le callback ? Non car on le met à false lors du rendu de l'eau
         glViewport(0, 0, g_windowWidth, g_windowHeight); //Car taille du fbo differente de celle de l'ecran
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         render(g_program);
