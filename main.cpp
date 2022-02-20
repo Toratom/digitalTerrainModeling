@@ -474,13 +474,14 @@ void printHelp()
 {
     std::cout <<
         "> Help:" << std::endl <<
+        "    To start the simulation select Go Thermal and Go Hydraulic" << std::endl <<
         "    Mouse commands:" << std::endl <<
         "    * Left button: rotate camera" << std::endl <<
         "    * Middle button: zoom" << std::endl <<
         "    * Right button: pan camera" << std::endl <<
         "    Keyboard commands:" << std::endl <<
         "    * H: print this help" << std::endl <<
-        "    * E: Thermal Erosion" << std::endl <<
+        "    * E: edition mode (left click : add material - right click : remove material) " << std::endl <<
         "    * ESC: quit the program" << std::endl;
 }
 
